@@ -154,6 +154,7 @@ interface VideoPlaybackProps {
 	// When true, render the selected zoom at the playhead even while paused —
 	// lets the editor preview the zoom effect without leaving the focus-edit view.
 	isPreviewingZoom?: boolean;
+	muteOriginalAudio?: boolean;
 }
 
 export interface VideoPlaybackRef {
@@ -277,6 +278,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorClickBounce = DEFAULT_CURSOR_SETTINGS.clickBounce,
 			cursorClipToBounds = DEFAULT_CURSOR_SETTINGS.clipToBounds,
 			isPreviewingZoom = false,
+			muteOriginalAudio = false,
 		},
 		ref,
 	) => {
@@ -854,6 +856,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			isPreviewingZoomRef.current = isPreviewingZoom;
 		}, [isPreviewingZoom]);
+
+		// Mute/unmute original video audio when the TTS panel toggle changes
+		useEffect(() => {
+			const video = videoRef.current;
+			if (video) {
+				video.muted = muteOriginalAudio;
+			}
+		}, [muteOriginalAudio]);
 
 		// Sync cursor overlay config when settings change
 		useEffect(() => {

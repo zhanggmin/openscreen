@@ -6,6 +6,7 @@ import {
 	ChevronDown,
 	Gauge,
 	MessageSquare,
+	Mic,
 	Plus,
 	Scissors,
 	WandSparkles,
@@ -33,6 +34,8 @@ import type {
 	CursorTelemetryPoint,
 	SpeedRegion,
 	TrimRegion,
+	TTSRegion,
+	ZoomDepth,
 	ZoomFocus,
 	ZoomRegion,
 } from "../types";
@@ -48,6 +51,7 @@ const TRIM_ROW_ID = "row-trim";
 const ANNOTATION_ROW_ID = "row-annotation";
 const BLUR_ROW_ID = "row-blur";
 const SPEED_ROW_ID = "row-speed";
+const TTS_ROW_ID = "row-tts";
 const FALLBACK_RANGE_MS = 1000;
 const TARGET_MARKER_COUNT = 12;
 const SUGGESTION_SPACING_MS = 1800;
@@ -89,6 +93,12 @@ interface TimelineEditorProps {
 	onSpeedDelete?: (id: string) => void;
 	selectedSpeedId?: string | null;
 	onSelectSpeed?: (id: string | null) => void;
+	ttsRegions?: TTSRegion[];
+	onTTSAdded?: (span: Span) => void;
+	onTTSSpanChange?: (id: string, span: Span) => void;
+	onTTSDelete?: (id: string) => void;
+	selectedTTSId?: string | null;
+	onSelectTTS?: (id: string | null) => void;
 	aspectRatio: AspectRatio;
 	onAspectRatioChange: (aspectRatio: AspectRatio) => void;
 	videoUrl?: string;
@@ -111,11 +121,11 @@ interface TimelineRenderItem {
 	rowId: string;
 	span: Span;
 	label: string;
-	zoomDepth?: number;
+	zoomDepth?: ZoomDepth;
 	zoomCustomScale?: number;
 	speedValue?: number;
 	isAutoFocus?: boolean;
-	variant: "zoom" | "trim" | "annotation" | "speed" | "blur";
+	variant: "zoom" | "trim" | "annotation" | "speed" | "blur" | "tts";
 }
 
 const SCALE_CANDIDATES = [
@@ -571,11 +581,13 @@ function Timeline({
 	onSelectAnnotation,
 	onSelectBlur,
 	onSelectSpeed,
+	onSelectTTS,
 	selectedZoomId,
 	selectedTrimId,
 	selectedAnnotationId,
 	selectedBlurId,
 	selectedSpeedId,
+	selectedTTSId,
 	keyframes = [],
 	videoUrl,
 	showTrimWaveform = false,
@@ -590,11 +602,13 @@ function Timeline({
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectBlur?: (id: string | null) => void;
 	onSelectSpeed?: (id: string | null) => void;
+	onSelectTTS?: (id: string | null) => void;
 	selectedZoomId: string | null;
 	selectedTrimId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedBlurId?: string | null;
 	selectedSpeedId?: string | null;
+	selectedTTSId?: string | null;
 	keyframes?: { id: string; time: number }[];
 	videoUrl?: string;
 	showTrimWaveform?: boolean;
@@ -638,7 +652,8 @@ function Timeline({
 		onSelectAnnotation?.(null);
 		onSelectBlur?.(null);
 		onSelectSpeed?.(null);
-	}, [onSelectZoom, onSelectTrim, onSelectAnnotation, onSelectBlur, onSelectSpeed]);
+		onSelectTTS?.(null);
+	}, [onSelectZoom, onSelectTrim, onSelectAnnotation, onSelectBlur, onSelectSpeed, onSelectTTS]);
 
 	const handleTimelineClick = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
@@ -758,6 +773,7 @@ function Timeline({
 	const annotationItems = items.filter((item) => item.rowId === ANNOTATION_ROW_ID);
 	const blurItems = items.filter((item) => item.rowId === BLUR_ROW_ID);
 	const speedItems = items.filter((item) => item.rowId === SPEED_ROW_ID);
+	const ttsItems = items.filter((item) => item.rowId === TTS_ROW_ID);
 
 	return (
 		<div
@@ -885,6 +901,22 @@ function Timeline({
 					</Item>
 				))}
 			</Row>
+
+			<Row id={TTS_ROW_ID} isEmpty={ttsItems.length === 0} hint={t("hints.pressTTS")}>
+				{ttsItems.map((item) => (
+					<Item
+						id={item.id}
+						key={item.id}
+						rowId={item.rowId}
+						span={item.span}
+						isSelected={item.id === selectedTTSId}
+						onSelect={() => onSelectTTS?.(item.id)}
+						variant="tts"
+					>
+						{item.label}
+					</Item>
+				))}
+			</Row>
 		</div>
 	);
 }
@@ -926,6 +958,12 @@ export default function TimelineEditor({
 	onSpeedDelete,
 	selectedSpeedId,
 	onSelectSpeed,
+	ttsRegions = [],
+	onTTSAdded,
+	onTTSSpanChange,
+	onTTSDelete,
+	selectedTTSId,
+	onSelectTTS,
 	aspectRatio,
 	onAspectRatioChange,
 	videoUrl,
@@ -1021,6 +1059,12 @@ export default function TimelineEditor({
 		onSelectSpeed(null);
 	}, [selectedSpeedId, onSpeedDelete, onSelectSpeed]);
 
+	const deleteSelectedTTS = useCallback(() => {
+		if (!selectedTTSId || !onTTSDelete || !onSelectTTS) return;
+		onTTSDelete(selectedTTSId);
+		onSelectTTS(null);
+	}, [selectedTTSId, onTTSDelete, onSelectTTS]);
+
 	useEffect(() => {
 		setRange(createInitialRange(totalMs));
 	}, [totalMs]);
@@ -1031,9 +1075,11 @@ export default function TimelineEditor({
 	const zoomRegionsRef = useRef(zoomRegions);
 	const trimRegionsRef = useRef(trimRegions);
 	const speedRegionsRef = useRef(speedRegions);
+	const ttsRegionsRef = useRef(ttsRegions);
 	zoomRegionsRef.current = zoomRegions;
 	trimRegionsRef.current = trimRegions;
 	speedRegionsRef.current = speedRegions;
+	ttsRegionsRef.current = ttsRegions;
 
 	useEffect(() => {
 		if (totalMs === 0 || safeMinDurationMs <= 0) {
@@ -1075,8 +1121,27 @@ export default function TimelineEditor({
 				onSpeedSpanChange?.(region.id, { start: normalizedStart, end: normalizedEnd });
 			}
 		});
+
+		ttsRegionsRef.current.forEach((region) => {
+			const clampedStart = Math.max(0, Math.min(region.startMs, totalMs));
+			const minEnd = clampedStart + safeMinDurationMs;
+			const clampedEnd = Math.min(totalMs, Math.max(minEnd, region.endMs));
+			const normalizedStart = Math.max(0, Math.min(clampedStart, totalMs - safeMinDurationMs));
+			const normalizedEnd = Math.max(minEnd, Math.min(clampedEnd, totalMs));
+
+			if (normalizedStart !== region.startMs || normalizedEnd !== region.endMs) {
+				onTTSSpanChange?.(region.id, { start: normalizedStart, end: normalizedEnd });
+			}
+		});
 		// Only re-run when the timeline scale changes, not on every region edit
-	}, [totalMs, safeMinDurationMs, onZoomSpanChange, onTrimSpanChange, onSpeedSpanChange]);
+	}, [
+		totalMs,
+		safeMinDurationMs,
+		onZoomSpanChange,
+		onTrimSpanChange,
+		onSpeedSpanChange,
+		onTTSSpanChange,
+	]);
 
 	const hasOverlap = useCallback(
 		(newSpan: Span, excludeId?: string): boolean => {
@@ -1086,8 +1151,9 @@ export default function TimelineEditor({
 			const isAnnotationItem = annotationRegions.some((r) => r.id === excludeId);
 			const isBlurItem = blurRegions.some((r) => r.id === excludeId);
 			const isSpeedItem = speedRegions.some((r) => r.id === excludeId);
+			const isTTSItem = ttsRegions.some((r) => r.id === excludeId);
 
-			if (isAnnotationItem || isBlurItem) {
+			if (isAnnotationItem || isBlurItem || isTTSItem) {
 				return false;
 			}
 
@@ -1114,7 +1180,7 @@ export default function TimelineEditor({
 
 			return false;
 		},
-		[zoomRegions, trimRegions, annotationRegions, blurRegions, speedRegions],
+		[zoomRegions, trimRegions, annotationRegions, blurRegions, speedRegions, ttsRegions],
 	);
 
 	// At least 5% of the timeline or 1000ms, whichever is larger, so the region
@@ -1357,6 +1423,21 @@ export default function TimelineEditor({
 		onBlurAdded({ start: startPos, end: endPos });
 	}, [videoDuration, totalMs, currentTimeMs, onBlurAdded, defaultRegionDurationMs]);
 
+	const handleAddTTS = useCallback(() => {
+		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onTTSAdded) {
+			return;
+		}
+
+		const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+		if (defaultDuration <= 0) {
+			return;
+		}
+
+		const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
+		const endPos = Math.min(startPos + defaultDuration, totalMs);
+		onTTSAdded({ start: startPos, end: endPos });
+	}, [videoDuration, totalMs, currentTimeMs, onTTSAdded, defaultRegionDurationMs]);
+
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -1422,6 +1503,8 @@ export default function TimelineEditor({
 					deleteSelectedBlur();
 				} else if (selectedSpeedId) {
 					deleteSelectedSpeed();
+				} else if (selectedTTSId) {
+					deleteSelectedTTS();
 				}
 			}
 		};
@@ -1440,12 +1523,14 @@ export default function TimelineEditor({
 		deleteSelectedAnnotation,
 		deleteSelectedBlur,
 		deleteSelectedSpeed,
+		deleteSelectedTTS,
 		selectedKeyframeId,
 		selectedZoomId,
 		selectedTrimId,
 		selectedAnnotationId,
 		selectedBlurId,
 		selectedSpeedId,
+		selectedTTSId,
 		annotationRegions,
 		currentTime,
 		onSelectAnnotation,
@@ -1523,8 +1608,25 @@ export default function TimelineEditor({
 			variant: "speed",
 		}));
 
-		return [...zooms, ...trims, ...annotations, ...blurs, ...speeds];
-	}, [zoomRegions, trimRegions, annotationRegions, blurRegions, speedRegions, t]);
+		const tts: TimelineRenderItem[] = ttsRegions.map((region, index) => {
+			let label: string;
+			if (region.content) {
+				const preview = region.content.trim();
+				label = preview.length > 20 ? `${preview.substring(0, 20)}...` : preview;
+			} else {
+				label = t("labels.ttsItem", { index: String(index + 1) });
+			}
+			return {
+				id: region.id,
+				rowId: TTS_ROW_ID,
+				span: { start: region.startMs, end: region.endMs },
+				label,
+				variant: "tts",
+			};
+		});
+
+		return [...zooms, ...trims, ...annotations, ...blurs, ...speeds, ...tts];
+	}, [zoomRegions, trimRegions, annotationRegions, blurRegions, speedRegions, ttsRegions, t]);
 
 	// Spans that participate in overlap resolution (clampToNeighbours).
 	// Excludes annotation/blur deliberately — those are allowed to overlap and
@@ -1564,6 +1666,8 @@ export default function TimelineEditor({
 				onAnnotationSpanChange?.(id, span);
 			} else if (blurRegions.some((r) => r.id === id)) {
 				onBlurSpanChange?.(id, span);
+			} else if (ttsRegions.some((r) => r.id === id)) {
+				onTTSSpanChange?.(id, span);
 			}
 		},
 		[
@@ -1572,11 +1676,13 @@ export default function TimelineEditor({
 			speedRegions,
 			annotationRegions,
 			blurRegions,
+			ttsRegions,
 			onZoomSpanChange,
 			onTrimSpanChange,
 			onSpeedSpanChange,
 			onAnnotationSpanChange,
 			onBlurSpanChange,
+			onTTSSpanChange,
 		],
 	);
 
@@ -1667,6 +1773,15 @@ export default function TimelineEditor({
 						title={t("buttons.addSpeed")}
 					>
 						<Gauge className="w-4 h-4" />
+					</Button>
+					<Button
+						onClick={handleAddTTS}
+						variant="ghost"
+						size="icon"
+						className="h-7 w-7 rounded-lg text-slate-400 hover:text-[#34B27B] hover:bg-[#34B27B]/10 transition-all"
+						title={t("buttons.addTTS")}
+					>
+						<Mic className="w-4 h-4" />
 					</Button>
 					{onGenerateCaptions && (
 						<Button
@@ -1760,11 +1875,13 @@ export default function TimelineEditor({
 						onSelectAnnotation={onSelectAnnotation}
 						onSelectBlur={onSelectBlur}
 						onSelectSpeed={onSelectSpeed}
+						onSelectTTS={onSelectTTS}
 						selectedZoomId={selectedZoomId}
 						selectedTrimId={selectedTrimId}
 						selectedAnnotationId={selectedAnnotationId}
 						selectedBlurId={selectedBlurId}
 						selectedSpeedId={selectedSpeedId}
+						selectedTTSId={selectedTTSId}
 						keyframes={keyframes}
 						videoUrl={videoUrl}
 						showTrimWaveform={showTrimWaveform}

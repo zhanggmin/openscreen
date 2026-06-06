@@ -77,5 +77,32 @@
 			"couldNotOpenTitle": "Could Not Open File",
 			"couldNotOpenMessage": "The project file could not be opened. The video it references may have been moved or deleted."
 		}
+	},
+	"tts": {
+		"title": "Text to Speech",
+		"subtitle": "Generate audio from captions",
+		"engineNotAvailable": "Text-to-speech is not available in this browser",
+		"failedToLoadVoices": "Failed to load voices",
+		"noCaptionsFound": "No captions found",
+		"voice": "Voice",
+		"selectVoice": "Select a voice",
+		"rate": "Rate",
+		"pitch": "Pitch",
+		"volume": "Volume",
+		"generate": "Generate Audio",
+		"generating": "Generating audio...",
+		"generationComplete": "Audio generation complete",
+		"segmentsGenerated": "{{count}} segments generated",
+		"generationFailed": "Audio generation failed",
+		"previewAll": "Preview All",
+		"previewing": "Previewing...",
+		"clear": "Clear",
+		"generatedSegments": "Generated Segments",
+		"captionsAvailable": "{{count}} captions available",
+		"cleared": "Cleared",
+		"addedToTimeline": "Added to timeline",
+		"segmentAdded": "Segment added",
+		"addAllToTimeline": "Add All",
+		"muteOriginalAudio": "Mute Original Video Audio"
 	}
 }

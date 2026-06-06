@@ -7,6 +7,15 @@ const DECODE_BACKPRESSURE_LIMIT = 20;
 const MIN_SPEED_REGION_DELTA_MS = 0.0001;
 const SEEK_TIMEOUT_MS = 5_000;
 
+/** Minimal TTS region info needed for audio export mixing. */
+export interface ExportTTSRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	blobUrl?: string | null;
+	audioData?: string | null;
+}
+
 export interface ExportAudioCodec {
 	encoderCodec: string;
 	muxerCodec: ExportAudioMuxerCodec;
@@ -213,15 +222,20 @@ export class AudioProcessor {
 	 * Audio export has two modes:
 	 * 1) no speed regions -> fast WebCodecs trim-only pipeline
 	 * 2) speed regions present -> pitch-preserving rendered timeline pipeline
+	 *
+	 * When TTS regions with audio are present, they are mixed on top of the
+	 * original audio (or used alone when the original audio is muted).
 	 */
 	async process(
-		demuxer: WebDemuxer,
+		demuxer: WebDemuxer | null,
 		muxer: VideoMuxer,
 		videoUrl: string,
 		trimRegions: TrimRegion[] | undefined,
 		speedRegions: SpeedRegion[] | undefined,
 		validatedDurationSec: number,
 		exportCodec: ExportAudioCodec,
+		ttsRegions?: ExportTTSRegion[],
+		muteOriginalAudio?: boolean,
 	): Promise<void> {
 		const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
 		const sortedSpeedRegions = speedRegions
@@ -229,6 +243,23 @@ export class AudioProcessor {
 					.filter((region) => region.endMs - region.startMs > MIN_SPEED_REGION_DELTA_MS)
 					.sort((a, b) => a.startMs - b.startMs)
 			: [];
+
+		const ttsWithAudio = (ttsRegions ?? []).filter((r) => r.blobUrl || r.audioData);
+
+		// Case: original audio muted + TTS audio present → TTS-only export
+		if (muteOriginalAudio && ttsWithAudio.length > 0) {
+			console.log("[AudioProcessor] Original audio muted, rendering TTS-only audio track...");
+			const ttsBuffer = await this.renderTTSAudioBuffer(ttsWithAudio, validatedDurationSec);
+			if (!this.cancelled && ttsBuffer) {
+				await this.encodeAndMuxAudioBuffer(ttsBuffer, muxer, exportCodec);
+			}
+			return;
+		}
+
+		// Case: original audio muted + no TTS → no audio at all
+		if (muteOriginalAudio) {
+			return;
+		}
 
 		// Speed edits must use timeline playback to preserve pitch
 		if (sortedSpeedRegions.length > 0) {
@@ -238,9 +269,23 @@ export class AudioProcessor {
 				sortedSpeedRegions,
 				validatedDurationSec,
 			);
-			if (!this.cancelled && renderedAudioBlob.size > 0) {
-				await this.muxRenderedAudioBlob(renderedAudioBlob, muxer, exportCodec);
+			if (this.cancelled) return;
+
+			if (ttsWithAudio.length > 0 && renderedAudioBlob.size > 0) {
+				console.log("[AudioProcessor] Mixing TTS audio with speed-adjusted original...");
+				const mixedBlob = await this.mixBlobWithTTS(
+					renderedAudioBlob,
+					ttsWithAudio,
+					validatedDurationSec,
+				);
+				if (!this.cancelled && mixedBlob && mixedBlob.size > 0) {
+					await this.muxRenderedAudioBlob(mixedBlob, muxer, exportCodec);
+				}
 				return;
+			}
+
+			if (renderedAudioBlob.size > 0) {
+				await this.muxRenderedAudioBlob(renderedAudioBlob, muxer, exportCodec);
 			}
 			return;
 		}
@@ -249,6 +294,31 @@ export class AudioProcessor {
 		// The +0.5s buffer mirrors streamingDecoder.decodeAll's read window so the trim-only
 		// and speed-aware paths agree on how far to read past the validated duration boundary.
 		const readEndSec = validatedDurationSec + 0.5;
+
+		if (ttsWithAudio.length > 0) {
+			// Decode original audio, mix with TTS, then encode
+			console.log("[AudioProcessor] Mixing TTS audio with original audio...");
+			if (!demuxer) {
+				// No original audio source: render TTS only
+				const ttsBuffer = await this.renderTTSAudioBuffer(ttsWithAudio, validatedDurationSec);
+				if (!this.cancelled && ttsBuffer) {
+					await this.encodeAndMuxAudioBuffer(ttsBuffer, muxer, exportCodec);
+				}
+				return;
+			}
+			await this.processTrimOnlyWithTTS(
+				demuxer,
+				muxer,
+				sortedTrims,
+				readEndSec,
+				exportCodec,
+				ttsWithAudio,
+				validatedDurationSec,
+			);
+			return;
+		}
+
+		if (!demuxer) return;
 		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, exportCodec);
 	}
 
@@ -825,5 +895,520 @@ export class AudioProcessor {
 
 	cancel(): void {
 		this.cancelled = true;
+	}
+
+	// ------------------------------------------------------------------
+	// TTS audio rendering and mixing helpers
+	// ------------------------------------------------------------------
+
+	/**
+	 * Render TTS segments into an AudioBuffer at their specified timestamps.
+	 * Returns null if no segments could be scheduled.
+	 */
+	private async renderTTSAudioBuffer(
+		ttsRegions: ExportTTSRegion[],
+		totalDurationSec: number,
+	): Promise<AudioBuffer | null> {
+		console.log(
+			`[AudioProcessor] renderTTSAudioBuffer: ${ttsRegions.length} regions, duration=${totalDurationSec.toFixed(2)}s`,
+		);
+
+		const sampleRate = 48000;
+		const totalSamples = Math.ceil(totalDurationSec * sampleRate);
+		if (totalSamples <= 0) {
+			console.warn("[AudioProcessor] renderTTSAudioBuffer: invalid duration");
+			return null;
+		}
+
+		const offlineContext = new OfflineAudioContext(2, totalSamples, sampleRate);
+		const audioCtx = new AudioContext({ sampleRate });
+		let scheduledCount = 0;
+
+		try {
+			for (const region of ttsRegions) {
+				if (this.cancelled) break;
+				let arrayBuffer: ArrayBuffer | null = null;
+
+				// Prefer audioData (persistent base64) over blobUrl (ephemeral)
+				if (region.audioData) {
+					try {
+						const base64 = region.audioData.includes(",")
+							? region.audioData.split(",")[1]
+							: region.audioData;
+						const binary = atob(base64);
+						const bytes = new Uint8Array(binary.length);
+						for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+						arrayBuffer = bytes.buffer as ArrayBuffer;
+					} catch (err) {
+						console.warn(`[AudioProcessor] Failed to decode TTS audioData for ${region.id}:`, err);
+					}
+				}
+
+				if (!arrayBuffer && region.blobUrl) {
+					try {
+						const response = await fetch(region.blobUrl);
+						if (!response.ok) {
+							console.warn(
+								`[AudioProcessor] TTS blob fetch failed for ${region.id}: HTTP ${response.status}`,
+							);
+						} else {
+							arrayBuffer = await response.arrayBuffer();
+						}
+					} catch (err) {
+						console.warn(`[AudioProcessor] Failed to fetch TTS blob for ${region.id}:`, err);
+					}
+				}
+
+				if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+					console.warn(
+						`[AudioProcessor] No audio data for TTS region ${region.id} (blobUrl=${!!region.blobUrl}, audioData=${!!region.audioData})`,
+					);
+					continue;
+				}
+
+				try {
+					const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+					const source = offlineContext.createBufferSource();
+					source.buffer = audioBuffer;
+					source.connect(offlineContext.destination);
+					source.start(region.startMs / 1000);
+					scheduledCount++;
+				} catch (err) {
+					console.warn(`[AudioProcessor] Failed to decode TTS audio for ${region.id}:`, err);
+				}
+			}
+
+			console.log(
+				`[AudioProcessor] renderTTSAudioBuffer: scheduled ${scheduledCount}/${ttsRegions.length} segments`,
+			);
+
+			if (scheduledCount === 0) {
+				console.warn("[AudioProcessor] No TTS segments were successfully scheduled");
+				return null;
+			}
+
+			return await offlineContext.startRendering();
+		} finally {
+			await audioCtx.close();
+		}
+	}
+
+	/**
+	 * Directly encode an AudioBuffer to the muxer using WebCodecs AudioEncoder.
+	 * This bypasses the WebDemuxer round-trip for rendered/mixed audio.
+	 */
+	private async encodeAndMuxAudioBuffer(
+		audioBuffer: AudioBuffer,
+		muxer: VideoMuxer,
+		exportCodec: ExportAudioCodec,
+	): Promise<void> {
+		const encodedChunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[] = [];
+
+		const encoder = new AudioEncoder({
+			output: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => {
+				encodedChunks.push({ chunk, meta });
+			},
+			error: (e: DOMException) => console.error("[AudioProcessor] TTS encode error:", e),
+		});
+
+		const outputChannels = exportCodec.numberOfChannels || audioBuffer.numberOfChannels;
+
+		const encodeConfig: AudioEncoderConfig = {
+			codec: exportCodec.encoderCodec,
+			sampleRate: exportCodec.sampleRate || audioBuffer.sampleRate,
+			numberOfChannels: outputChannels,
+			bitrate: AUDIO_BITRATE,
+		};
+
+		const support = await AudioEncoder.isConfigSupported(encodeConfig);
+		if (!support.supported) {
+			console.warn("[AudioProcessor] TTS audio encoding not supported");
+			return;
+		}
+
+		encoder.configure(encodeConfig);
+
+		const numFrames = audioBuffer.length;
+		const frameSize = 1024;
+
+		for (let offset = 0; offset < numFrames; offset += frameSize) {
+			if (this.cancelled) break;
+			const frames = Math.min(frameSize, numFrames - offset);
+
+			// Build interleaved f32 data for the requested output channels
+			const interleavedData = new Float32Array(frames * outputChannels);
+			for (let ch = 0; ch < outputChannels; ch++) {
+				const srcCh = Math.min(ch, audioBuffer.numberOfChannels - 1);
+				const channelData = audioBuffer.getChannelData(srcCh);
+				for (let i = 0; i < frames; i++) {
+					interleavedData[i * outputChannels + ch] = channelData[offset + i];
+				}
+			}
+
+			const audioData = new AudioData({
+				format: "f32",
+				sampleRate: audioBuffer.sampleRate,
+				numberOfFrames: frames,
+				numberOfChannels: outputChannels,
+				timestamp: (offset / audioBuffer.sampleRate) * 1_000_000,
+				data: interleavedData.buffer,
+			});
+
+			encoder.encode(audioData);
+			audioData.close();
+		}
+
+		if (encoder.state === "configured") {
+			await encoder.flush();
+			encoder.close();
+		}
+
+		console.log(`[AudioProcessor] Encoded ${encodedChunks.length} TTS audio chunks`);
+
+		for (const { chunk, meta } of encodedChunks) {
+			if (this.cancelled) break;
+			await muxer.addAudioChunk(chunk, meta);
+		}
+	}
+
+	/**
+	 * Mix a rendered audio blob (e.g. speed-adjusted original) with TTS segments.
+	 * Returns a new blob containing the sum of both audio sources.
+	 */
+	private async mixBlobWithTTS(
+		originalBlob: Blob,
+		ttsRegions: ExportTTSRegion[],
+		totalDurationSec: number,
+	): Promise<Blob> {
+		const audioCtx = new AudioContext();
+		try {
+			const originalArrayBuffer = await originalBlob.arrayBuffer();
+			const originalBuffer = await audioCtx.decodeAudioData(originalArrayBuffer);
+
+			const sampleRate = originalBuffer.sampleRate;
+			const totalSamples = Math.ceil(totalDurationSec * sampleRate);
+			const offlineContext = new OfflineAudioContext(
+				originalBuffer.numberOfChannels,
+				totalSamples,
+				sampleRate,
+			);
+
+			// Add original audio
+			const origSource = offlineContext.createBufferSource();
+			origSource.buffer = originalBuffer;
+			origSource.connect(offlineContext.destination);
+			origSource.start(0);
+
+			// Add TTS audio
+			await this.addTTSToOfflineContext(offlineContext, ttsRegions, audioCtx);
+
+			const renderedBuffer = await offlineContext.startRendering();
+			return this.audioBufferToWav(renderedBuffer);
+		} finally {
+			await audioCtx.close();
+		}
+	}
+
+	/**
+	 * Decode TTS regions and schedule them on an OfflineAudioContext.
+	 */
+	private async addTTSToOfflineContext(
+		offlineContext: OfflineAudioContext,
+		ttsRegions: ExportTTSRegion[],
+		decodeContext: AudioContext,
+	): Promise<void> {
+		for (const region of ttsRegions) {
+			if (this.cancelled) break;
+			let arrayBuffer: ArrayBuffer | null = null;
+
+			// Prefer audioData (persistent base64) over blobUrl (ephemeral)
+			if (region.audioData) {
+				try {
+					const base64 = region.audioData.includes(",")
+						? region.audioData.split(",")[1]
+						: region.audioData;
+					const binary = atob(base64);
+					const bytes = new Uint8Array(binary.length);
+					for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+					arrayBuffer = bytes.buffer as ArrayBuffer;
+				} catch (err) {
+					console.warn(`[AudioProcessor] Failed to decode TTS audioData for ${region.id}:`, err);
+				}
+			}
+
+			if (!arrayBuffer && region.blobUrl) {
+				try {
+					const response = await fetch(region.blobUrl);
+					if (response.ok) {
+						arrayBuffer = await response.arrayBuffer();
+					}
+				} catch (err) {
+					console.warn(`[AudioProcessor] Failed to fetch TTS blob for ${region.id}:`, err);
+				}
+			}
+
+			if (!arrayBuffer || arrayBuffer.byteLength === 0) continue;
+
+			try {
+				const audioBuffer = await decodeContext.decodeAudioData(arrayBuffer.slice(0));
+				const source = offlineContext.createBufferSource();
+				source.buffer = audioBuffer;
+				source.connect(offlineContext.destination);
+				source.start(region.startMs / 1000);
+			} catch (err) {
+				console.warn(`[AudioProcessor] Failed to decode TTS audio for ${region.id}:`, err);
+			}
+		}
+	}
+
+	/**
+	 * Trim-only path that also mixes TTS audio on top of the original.
+	 * Decodes the original audio, mixes TTS segments at their timeline positions,
+	 * applies trim adjustments, encodes and muxes the result.
+	 */
+	private async processTrimOnlyWithTTS(
+		demuxer: WebDemuxer,
+		muxer: VideoMuxer,
+		sortedTrims: TrimRegion[],
+		readEndSec: number | undefined,
+		exportCodec: ExportAudioCodec,
+		ttsRegions: ExportTTSRegion[],
+		totalDurationSec: number,
+	): Promise<void> {
+		let audioConfig: AudioDecoderConfig;
+		try {
+			audioConfig = await demuxer.getDecoderConfig("audio");
+		} catch {
+			// No original audio track → fall back to TTS-only
+			console.log("[AudioProcessor] No original audio, rendering TTS only");
+			const ttsBuffer = await this.renderTTSAudioBuffer(ttsRegions, totalDurationSec);
+			if (!this.cancelled && ttsBuffer) {
+				await this.encodeAndMuxAudioBuffer(ttsBuffer, muxer, exportCodec);
+			}
+			return;
+		}
+
+		const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
+		if (!codecCheck.supported) {
+			// Can't decode original → TTS-only
+			const ttsBuffer = await this.renderTTSAudioBuffer(ttsRegions, totalDurationSec);
+			if (!this.cancelled && ttsBuffer) {
+				await this.encodeAndMuxAudioBuffer(ttsBuffer, muxer, exportCodec);
+			}
+			return;
+		}
+
+		// Phase 1: Decode original audio from source, skipping trimmed regions
+		const decodedFrames: AudioData[] = [];
+
+		const decoder = new AudioDecoder({
+			output: (data: AudioData) => decodedFrames.push(data),
+			error: (e: DOMException) => console.error("[AudioProcessor] Decode error:", e),
+		});
+		decoder.configure(audioConfig);
+
+		const safeReadEndSec =
+			typeof readEndSec === "number" && Number.isFinite(readEndSec)
+				? Math.max(0, readEndSec)
+				: undefined;
+		const audioStream =
+			safeReadEndSec !== undefined
+				? demuxer.read("audio", 0, safeReadEndSec)
+				: demuxer.read("audio");
+		const reader = audioStream.getReader();
+
+		try {
+			while (!this.cancelled) {
+				const { done, value: chunk } = await reader.read();
+				if (done || !chunk) break;
+
+				const timestampMs = chunk.timestamp / 1000;
+				if (this.isInTrimRegion(timestampMs, sortedTrims)) continue;
+
+				decoder.decode(chunk);
+
+				while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
+					await new Promise((resolve) => setTimeout(resolve, 1));
+				}
+			}
+		} finally {
+			try {
+				await reader.cancel();
+			} catch {
+				/* reader already closed */
+			}
+		}
+
+		if (decoder.state === "configured") {
+			await decoder.flush();
+			decoder.close();
+		}
+
+		if (this.cancelled) {
+			for (const frame of decodedFrames) frame.close();
+			return;
+		}
+
+		// Phase 2: Render original frames + TTS into a single AudioBuffer via OfflineAudioContext
+		const sampleRate = audioConfig.sampleRate || 48000;
+		const channels = audioConfig.numberOfChannels || 2;
+		const outputSampleRate = exportCodec.sampleRate || sampleRate;
+		const outputChannels = exportCodec.numberOfChannels || channels;
+
+		// Compute total output duration: original duration minus trim gaps
+		const totalTrimGapMs = sortedTrims.reduce((sum, t) => sum + (t.endMs - t.startMs), 0);
+		const originalDurationSec = Math.max(
+			totalDurationSec,
+			decodedFrames.length > 0
+				? decodedFrames[decodedFrames.length - 1].timestamp / 1_000_000 +
+						decodedFrames[decodedFrames.length - 1].numberOfFrames / sampleRate
+				: 0,
+		);
+		const outputDurationSec = Math.max(
+			originalDurationSec - totalTrimGapMs / 1000,
+			totalDurationSec - totalTrimGapMs / 1000,
+		);
+
+		const totalSamples = Math.ceil(outputDurationSec * outputSampleRate);
+		if (totalSamples <= 0) {
+			for (const frame of decodedFrames) frame.close();
+			return;
+		}
+
+		const offlineContext = new OfflineAudioContext(outputChannels, totalSamples, outputSampleRate);
+
+		// Add original audio frames (with trim timestamp adjustment)
+		for (const audioData of decodedFrames) {
+			if (this.cancelled) {
+				audioData.close();
+				continue;
+			}
+
+			const timestampMs = audioData.timestamp / 1000;
+			const trimOffsetMs = this.computeTrimOffset(timestampMs, sortedTrims);
+			const adjustedTimestampUs = audioData.timestamp - trimOffsetMs * 1000;
+
+			if (adjustedTimestampUs < 0) {
+				audioData.close();
+				continue;
+			}
+
+			try {
+				const numFrames = audioData.numberOfFrames;
+				const numChannels = audioData.numberOfChannels;
+				const isPlanar = audioData.format?.includes("planar");
+
+				if (isPlanar) {
+					const planes: Float32Array[] = [];
+					for (let ch = 0; ch < numChannels; ch++) {
+						const plane = new Float32Array(numFrames);
+						audioData.copyTo(plane, { planeIndex: ch, format: "f32-planar" });
+						planes.push(plane);
+					}
+
+					const downmixed = downmixPlanarChannelsForExport(planes, outputChannels);
+					const buf = offlineContext.createBuffer(outputChannels, numFrames, audioData.sampleRate);
+					for (let ch = 0; ch < outputChannels; ch++) {
+						const channelSlice = new Float32Array(
+							downmixed.subarray(ch * numFrames, (ch + 1) * numFrames),
+						);
+						buf.copyToChannel(channelSlice, ch);
+					}
+					const source = offlineContext.createBufferSource();
+					source.buffer = buf;
+					source.connect(offlineContext.destination);
+					source.start(adjustedTimestampUs / 1_000_000);
+				} else {
+					// Interleaved format
+					const interleaved = new Float32Array(numFrames * numChannels);
+					audioData.copyTo(interleaved, { planeIndex: 0, format: "f32" });
+
+					const buf = offlineContext.createBuffer(outputChannels, numFrames, audioData.sampleRate);
+					for (let ch = 0; ch < outputChannels; ch++) {
+						const srcCh = Math.min(ch, numChannels - 1);
+						const channelData = new Float32Array(numFrames);
+						for (let i = 0; i < numFrames; i++) {
+							channelData[i] = interleaved[i * numChannels + srcCh];
+						}
+						buf.copyToChannel(channelData, ch);
+					}
+					const source = offlineContext.createBufferSource();
+					source.buffer = buf;
+					source.connect(offlineContext.destination);
+					source.start(adjustedTimestampUs / 1_000_000);
+				}
+			} catch (err) {
+				console.warn("[AudioProcessor] Failed to schedule original audio frame:", err);
+			} finally {
+				audioData.close();
+			}
+		}
+
+		// Add TTS audio segments
+		const decodeCtx = new AudioContext({ sampleRate: outputSampleRate });
+		try {
+			await this.addTTSToOfflineContext(offlineContext, ttsRegions, decodeCtx);
+		} finally {
+			await decodeCtx.close();
+		}
+
+		const renderedBuffer = await offlineContext.startRendering();
+		const mixedBlob = this.audioBufferToWav(renderedBuffer);
+
+		// Phase 3: Encode and mux the mixed audio
+		await this.muxRenderedAudioBlob(mixedBlob, muxer, exportCodec);
+	}
+
+	/**
+	 * Encode an AudioBuffer to a WAV blob (RIFF/WAVE, 16-bit PCM, proper chunk headers).
+	 */
+	private audioBufferToWav(buffer: AudioBuffer): Blob {
+		const numChannels = buffer.numberOfChannels;
+		const sampleRate = buffer.sampleRate;
+		const bitDepth = 16;
+		const bytesPerSample = bitDepth / 8;
+		const blockAlign = numChannels * bytesPerSample;
+
+		const dataLength = buffer.length * blockAlign;
+		const bufferLength = 44 + dataLength;
+		const arrayBuffer = new ArrayBuffer(bufferLength);
+		const view = new DataView(arrayBuffer);
+
+		const writeString = (offset: number, str: string) => {
+			for (let i = 0; i < str.length; i++) {
+				view.setUint8(offset + i, str.charCodeAt(i));
+			}
+		};
+
+		writeString(0, "RIFF");
+		view.setUint32(4, 36 + dataLength, true);
+		writeString(8, "WAVE");
+		writeString(12, "fmt ");
+		view.setUint32(16, 16, true);
+		view.setUint16(20, 1, true); // PCM
+		view.setUint16(22, numChannels, true);
+		view.setUint32(24, sampleRate, true);
+		view.setUint32(28, sampleRate * blockAlign, true);
+		view.setUint16(32, blockAlign, true);
+		view.setUint16(34, bitDepth, true);
+		writeString(36, "data");
+		view.setUint32(40, dataLength, true);
+
+		const channels: Float32Array[] = [];
+		for (let i = 0; i < numChannels; i++) {
+			channels.push(buffer.getChannelData(i));
+		}
+
+		let offset = 44;
+		for (let i = 0; i < buffer.length; i++) {
+			for (let ch = 0; ch < numChannels; ch++) {
+				const sample = Math.max(-1, Math.min(1, channels[ch][i]));
+				const value = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+				view.setInt16(offset, value, true);
+				offset += 2;
+			}
+		}
+
+		return new Blob([arrayBuffer], { type: "audio/wav" });
 	}
 }

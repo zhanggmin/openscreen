@@ -52,6 +52,8 @@ import {
 import { computeFrameStepTime } from "@/lib/frameStep";
 import type { CursorCaptureMode, ProjectMedia } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
+import type { TTSSettings } from "@/lib/tts/types";
+import { WebSpeechEngine } from "@/lib/tts/webSpeechEngine";
 import {
 	getExportFolder,
 	loadUserPreferences,
@@ -104,6 +106,7 @@ import {
 	type Rotation3DPreset,
 	type SpeedRegion,
 	type TrimRegion,
+	type TTSRegion,
 	ZOOM_DEPTH_SCALES,
 	type ZoomDepth,
 	type ZoomFocus,
@@ -115,6 +118,31 @@ import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 
 /** Single Sonner slot for auto-caption progress so phases update in place instead of stacking. */
 const AUTO_CAPTION_PROGRESS_TOAST_ID = "auto-caption-progress";
+
+/** Convert a blob: URL to a base64 data-URI string suitable for JSON serialization. */
+async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
+	const response = await fetch(blobUrl);
+	const blob = await response.blob();
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onloadend = () => resolve(reader.result as string);
+		reader.onerror = () => reject(new Error("Failed to read blob"));
+		reader.readAsDataURL(blob);
+	});
+}
+
+/** Create a blob: URL from a base64 data-URI string. */
+function dataUrlToBlobUrl(dataUrl: string): string {
+	const byteString = atob(dataUrl.split(",")[1] ?? "");
+	const mimeMatch = /^data:([^;]+)/.exec(dataUrl);
+	const mime = mimeMatch ? mimeMatch[1] : "audio/mpeg";
+	const ab = new ArrayBuffer(byteString.length);
+	const ia = new Uint8Array(ab);
+	for (let i = 0; i < byteString.length; i++) {
+		ia[i] = byteString.charCodeAt(i);
+	}
+	return URL.createObjectURL(new Blob([ab], { type: mime }));
+}
 
 function isClickInteractionType(interactionType: string | null | undefined) {
 	return (
@@ -190,6 +218,7 @@ export default function VideoEditor() {
 		trimRegions,
 		speedRegions,
 		annotationRegions,
+		ttsRegions,
 		cropRegion,
 		wallpaper,
 		shadowIntensity,
@@ -227,6 +256,7 @@ export default function VideoEditor() {
 	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [selectedBlurId, setSelectedBlurId] = useState<string | null>(null);
+	const [selectedTTSId, setSelectedTTSId] = useState<string | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -243,6 +273,7 @@ export default function VideoEditor() {
 	);
 	const [exportedFilePath, setExportedFilePath] = useState<string | null>(null);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<string | null>(null);
+	const [muteOriginalAudio, setMuteOriginalAudio] = useState(false);
 	const [unsavedExport, setUnsavedExport] = useState<{
 		arrayBuffer: ArrayBuffer;
 		fileName: string;
@@ -293,6 +324,30 @@ export default function VideoEditor() {
 	const nextZoomIdRef = useRef(1);
 	const nextTrimIdRef = useRef(1);
 	const nextSpeedIdRef = useRef(1);
+	const nextTTSIdRef = useRef(1);
+
+	// TTS 播放相关状态
+	const ttsEngineRef = useRef<WebSpeechEngine>(new WebSpeechEngine());
+	const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+	const currentPlayingTTSIdRef = useRef<string | null>(null);
+	const isPlayingRef = useRef(isPlaying);
+	const currentTTSSettingsRef = useRef<TTSSettings>({
+		voice: "",
+		rate: 1.0,
+		pitch: 1.0,
+		volume: 1.0,
+		lang: "zh-CN",
+	});
+	const previousFrameTimeRef = useRef<number>(-1);
+
+	const handleTTSSettingsChange = useCallback((settings: TTSSettings) => {
+		currentTTSSettingsRef.current = settings;
+	}, []);
+
+	// 更新播放状态引用
+	useEffect(() => {
+		isPlayingRef.current = isPlaying;
+	}, [isPlaying]);
 
 	const { shortcuts, isMac } = useShortcuts();
 	// Native Windows recordings include captured cursor assets. Native macOS
@@ -363,12 +418,18 @@ export default function VideoEditor() {
 			const webcamSourcePath = projectMedia.webcamVideoPath ?? null;
 			const projectCursorCaptureMode = projectMedia.cursorCaptureMode ?? null;
 			const normalizedEditor = normalizeProjectEditor(project.editor);
+			// Restore ephemeral blobUrl from persisted audioData so TTS playback works
+			const ttsRegionsWithBlob = (normalizedEditor.ttsRegions || []).map((region) => ({
+				...region,
+				blobUrl: region.audioData ? dataUrlToBlobUrl(region.audioData) : region.blobUrl,
+			}));
 			const inferredDurationMs = Math.max(
 				0,
 				...normalizedEditor.zoomRegions.map((region) => region.endMs),
 				...normalizedEditor.trimRegions.map((region) => region.endMs),
 				...normalizedEditor.speedRegions.map((region) => region.endMs),
 				...normalizedEditor.annotationRegions.map((region) => region.endMs),
+				...(normalizedEditor.ttsRegions?.map((region) => region.endMs) || []),
 			);
 
 			try {
@@ -401,6 +462,7 @@ export default function VideoEditor() {
 				trimRegions: normalizedEditor.trimRegions,
 				speedRegions: normalizedEditor.speedRegions,
 				annotationRegions: normalizedEditor.annotationRegions,
+				ttsRegions: ttsRegionsWithBlob,
 				aspectRatio: normalizedEditor.aspectRatio,
 				webcamLayoutPreset: normalizedEditor.webcamLayoutPreset,
 				webcamMaskShape: normalizedEditor.webcamMaskShape,
@@ -419,6 +481,7 @@ export default function VideoEditor() {
 			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 			setSelectedBlurId(null);
+			setSelectedTTSId(null);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
@@ -435,6 +498,10 @@ export default function VideoEditor() {
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
 				normalizedEditor.annotationRegions.map((region) => region.id),
+			);
+			nextTTSIdRef.current = deriveNextId(
+				"tts",
+				(normalizedEditor.ttsRegions || []).map((region) => region.id),
 			);
 			nextAnnotationZIndexRef.current =
 				normalizedEditor.annotationRegions.reduce(
@@ -474,6 +541,7 @@ export default function VideoEditor() {
 			trimRegions,
 			speedRegions,
 			annotationRegions,
+			ttsRegions,
 			aspectRatio,
 			webcamLayoutPreset,
 			webcamMaskShape,
@@ -500,6 +568,7 @@ export default function VideoEditor() {
 		trimRegions,
 		speedRegions,
 		annotationRegions,
+		ttsRegions,
 		aspectRatio,
 		webcamLayoutPreset,
 		webcamMaskShape,
@@ -613,6 +682,26 @@ export default function VideoEditor() {
 				return false;
 			}
 
+			// Persist TTS audio: convert any ephemeral blobUrl to base64 audioData
+			const persistedTTSRegions: TTSRegion[] = await Promise.all(
+				ttsRegions.map(async (region) => {
+					if (region.audioData || !region.blobUrl) {
+						// Strip blobUrl from serialization, keep audioData
+						const { blobUrl: _blobUrl, ...rest } = region;
+						return rest;
+					}
+					try {
+						const audioData = await blobUrlToDataUrl(region.blobUrl);
+						const { blobUrl: _blobUrl, ...rest } = region;
+						return { ...rest, audioData };
+					} catch (err) {
+						console.error("Failed to persist TTS audio for region", region.id, err);
+						const { blobUrl: _blobUrl, ...rest } = region;
+						return rest;
+					}
+				}),
+			);
+
 			const editorState = {
 				wallpaper,
 				shadowIntensity,
@@ -626,6 +715,7 @@ export default function VideoEditor() {
 				trimRegions,
 				speedRegions,
 				annotationRegions,
+				ttsRegions: persistedTTSRegions,
 				aspectRatio,
 				webcamLayoutPreset,
 				webcamMaskShape,
@@ -687,6 +777,7 @@ export default function VideoEditor() {
 			trimRegions,
 			speedRegions,
 			annotationRegions,
+			ttsRegions,
 			aspectRatio,
 			webcamLayoutPreset,
 			webcamMaskShape,
@@ -814,6 +905,7 @@ export default function VideoEditor() {
 		setSelectedSpeedId(null);
 		setSelectedAnnotationId(null);
 		setSelectedBlurId(null);
+		setSelectedTTSId(null);
 		// Reset playback.
 		setCurrentTime(0);
 		setIsPlaying(false);
@@ -829,6 +921,7 @@ export default function VideoEditor() {
 		nextTrimIdRef.current = 1;
 		nextSpeedIdRef.current = 1;
 		nextAnnotationIdRef.current = 1;
+		nextTTSIdRef.current = 1;
 		nextAnnotationZIndexRef.current = 1;
 	}, [resetState]);
 
@@ -905,10 +998,16 @@ export default function VideoEditor() {
 		const video = playback?.video;
 		if (!playback || !video) return;
 
-		if (isPlaying) {
-			playback.pause();
+		// Use the actual video element state rather than the React state to
+		// avoid AbortError race conditions caused by stale `isPlaying`.
+		if (video.paused || video.ended) {
+			playback.play().catch((err) => {
+				if (err.name !== "AbortError") {
+					console.error("Video play failed:", err);
+				}
+			});
 		} else {
-			playback.play().catch((err) => console.error("Video play failed:", err));
+			playback.pause();
 		}
 	}
 
@@ -1198,6 +1297,174 @@ export default function VideoEditor() {
 		[pushState],
 	);
 
+	const handleTTSSegmentsAdded = useCallback(
+		async (
+			segments: Array<{
+				id: string;
+				startMs: number;
+				endMs: number;
+				content: string;
+				blobUrl?: string | null;
+				audioBuffer?: AudioBuffer | null;
+			}>,
+		) => {
+			const currentSettings = currentTTSSettingsRef.current;
+			const newRegions = await Promise.all(
+				segments.map(async (segment) => {
+					const id = `tts-${nextTTSIdRef.current++}`;
+					let audioData: string | null = null;
+					if (segment.blobUrl) {
+						try {
+							audioData = await blobUrlToDataUrl(segment.blobUrl);
+						} catch (err) {
+							console.warn("Failed to persist TTS audio for segment", segment.id, err);
+						}
+					}
+					// 以实际音频时长为准，避免字幕时长截断音频
+					const startMs = Math.round(segment.startMs);
+					let endMs = Math.round(segment.endMs);
+					if (segment.audioBuffer && segment.audioBuffer.duration > 0) {
+						endMs = startMs + Math.round(segment.audioBuffer.duration * 1000);
+					} else if (audioData) {
+						// audioBuffer 不可用但有 audioData，尝试解码获取时长
+						try {
+							const base64 = audioData.includes(",") ? audioData.split(",")[1] : audioData;
+							const binary = atob(base64);
+							const bytes = new Uint8Array(binary.length);
+							for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+							const AudioCtx =
+								window.AudioContext ||
+								(window as unknown as { webkitAudioContext: typeof AudioContext })
+									.webkitAudioContext;
+							const ctx = new AudioCtx();
+							const decoded = await ctx.decodeAudioData(bytes.buffer as ArrayBuffer);
+							endMs = startMs + Math.round(decoded.duration * 1000);
+							ctx.close();
+						} catch {
+							// 解码失败则保持原始 endMs
+						}
+					}
+					return {
+						id,
+						startMs,
+						endMs,
+						content: segment.content,
+						voice: currentSettings.voice,
+						rate: currentSettings.rate,
+						pitch: currentSettings.pitch,
+						blobUrl: segment.blobUrl ?? null,
+						audioData,
+					} as TTSRegion;
+				}),
+			);
+
+			pushState((prev) => ({
+				ttsRegions: [...(prev.ttsRegions || []), ...newRegions],
+			}));
+
+			if (newRegions.length > 0) {
+				setSelectedTTSId(newRegions[newRegions.length - 1].id);
+				setSelectedZoomId(null);
+				setSelectedTrimId(null);
+				setSelectedSpeedId(null);
+				setSelectedAnnotationId(null);
+				setSelectedBlurId(null);
+			}
+		},
+		[pushState],
+	);
+
+	// 停止所有 TTS 音频（包括 WebSpeech 和预生成音频）
+	const stopAllTTS = useCallback(() => {
+		ttsEngineRef.current.cancel();
+		if (ttsAudioRef.current) {
+			ttsAudioRef.current.pause();
+			ttsAudioRef.current.currentTime = 0;
+			ttsAudioRef.current = null;
+		}
+	}, []);
+
+	// TTS 同步播放逻辑
+	useEffect(() => {
+		if (!isPlaying) {
+			// 暂停时停止播放 TTS
+			stopAllTTS();
+			currentPlayingTTSIdRef.current = null;
+			previousFrameTimeRef.current = -1;
+			return;
+		}
+
+		const currentTimeMs = currentTime * 1000;
+
+		// 查找当前应该播放的 TTS 区域
+		const activeRegion = ttsRegions.find(
+			(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
+		);
+
+		if (activeRegion) {
+			const isNewRegion = currentPlayingTTSIdRef.current !== activeRegion.id;
+
+			// Check if audio is already playing for this region
+			const isAudioAlreadyPlaying =
+				!isNewRegion &&
+				((activeRegion.blobUrl &&
+					ttsAudioRef.current &&
+					!ttsAudioRef.current.paused &&
+					!ttsAudioRef.current.ended) ||
+					(!activeRegion.blobUrl &&
+						typeof window !== "undefined" &&
+						window.speechSynthesis?.speaking));
+
+			// Detect seek by comparing consecutive frames:
+			// Normal playback advances ~16-33ms per frame; a jump >150ms means user scrubbed
+			const frameDelta =
+				previousFrameTimeRef.current >= 0
+					? Math.abs(currentTimeMs - previousFrameTimeRef.current)
+					: 0;
+			const SEEK_JUMP_THRESHOLD_MS = 150;
+			const isRealSeek = !isNewRegion && frameDelta > SEEK_JUMP_THRESHOLD_MS;
+
+			previousFrameTimeRef.current = currentTimeMs;
+
+			if (isNewRegion || (isRealSeek && !isAudioAlreadyPlaying)) {
+				// 取消之前的播放
+				stopAllTTS();
+				currentPlayingTTSIdRef.current = activeRegion.id;
+
+				// 播放新的 TTS
+				if (activeRegion.blobUrl) {
+					// 优先使用预生成的音频文件（如阿里云 TTS）
+					const audio = new Audio(activeRegion.blobUrl);
+					ttsAudioRef.current = audio;
+					audio.play().catch((err) => {
+						console.error("TTS 音频播放错误:", err);
+					});
+				} else if (activeRegion.content) {
+					// 回退到 WebSpeechEngine 实时生成
+					const fallback = currentTTSSettingsRef.current;
+					ttsEngineRef.current
+						.speak(activeRegion.content, {
+							voice: activeRegion.voice ?? fallback.voice,
+							rate: activeRegion.rate ?? fallback.rate,
+							pitch: activeRegion.pitch ?? fallback.pitch,
+							volume: fallback.volume,
+							lang: fallback.lang,
+						})
+						.catch((err) => {
+							console.error("TTS 播放错误:", err);
+						});
+				}
+			}
+		} else {
+			// 当前没有活跃的 TTS 区域，停止播放
+			if (currentPlayingTTSIdRef.current) {
+				stopAllTTS();
+				currentPlayingTTSIdRef.current = null;
+				previousFrameTimeRef.current = -1;
+			}
+		}
+	}, [isPlaying, currentTime, ttsRegions, stopAllTTS]);
+
 	const handleSpeedSpanChange = useCallback(
 		(id: string, span: Span) => {
 			pushState((prev) => ({
@@ -1293,6 +1560,72 @@ export default function VideoEditor() {
 		},
 		[pushState],
 	);
+
+	const handleTTSAdded = useCallback(
+		(span: Span) => {
+			const id = `tts-${nextTTSIdRef.current++}`;
+			const currentSettings = currentTTSSettingsRef.current;
+			const newRegion: TTSRegion = {
+				id,
+				startMs: Math.round(span.start),
+				endMs: Math.round(span.end),
+				content: "Enter text for TTS...",
+				voice: currentSettings.voice,
+				rate: currentSettings.rate,
+				pitch: currentSettings.pitch,
+			};
+			pushState((prev) => ({
+				ttsRegions: [...prev.ttsRegions, newRegion],
+			}));
+			setSelectedTTSId(id);
+			setSelectedZoomId(null);
+			setSelectedTrimId(null);
+			setSelectedSpeedId(null);
+			setSelectedAnnotationId(null);
+			setSelectedBlurId(null);
+		},
+		[pushState],
+	);
+
+	const handleTTSSpanChange = useCallback(
+		(id: string, span: Span) => {
+			pushState((prev) => ({
+				ttsRegions: prev.ttsRegions.map((region) =>
+					region.id === id
+						? {
+								...region,
+								startMs: Math.round(span.start),
+								endMs: Math.round(span.end),
+							}
+						: region,
+				),
+			}));
+		},
+		[pushState],
+	);
+
+	const handleTTSDelete = useCallback(
+		(id: string) => {
+			pushState((prev) => ({
+				ttsRegions: prev.ttsRegions.filter((region) => region.id !== id),
+			}));
+			if (selectedTTSId === id) {
+				setSelectedTTSId(null);
+			}
+		},
+		[selectedTTSId, pushState],
+	);
+
+	const handleSelectTTS = useCallback((id: string | null) => {
+		setSelectedTTSId(id);
+		if (id !== null) {
+			setSelectedZoomId(null);
+			setSelectedTrimId(null);
+			setSelectedSpeedId(null);
+			setSelectedAnnotationId(null);
+			setSelectedBlurId(null);
+		}
+	}, []);
 
 	const handleAnnotationSpanChange = useCallback(
 		(id: string, span: Span) => {
@@ -1594,7 +1927,11 @@ export default function VideoEditor() {
 				e.preventDefault();
 				const playback = videoPlaybackRef.current;
 				if (playback?.video) {
-					playback.video.paused ? playback.play().catch(console.error) : playback.pause();
+					playback.video.paused || playback.video.ended
+						? playback.play().catch((err) => {
+								if (err.name !== "AbortError") console.error(err);
+							})
+						: playback.pause();
 				}
 			}
 		};
@@ -1897,6 +2234,8 @@ export default function VideoEditor() {
 						previewHeight,
 						cursorTelemetry,
 						cursorClickTimestamps,
+						muteOriginalAudio,
+						ttsRegions: ttsRegions.filter((r) => r.blobUrl || r.audioData),
 						onProgress: (progress: ExportProgress) => {
 							setExportProgress(progress);
 						},
@@ -2005,6 +2344,8 @@ export default function VideoEditor() {
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClipToBounds,
+			muteOriginalAudio,
+			ttsRegions,
 			t,
 		],
 	);
@@ -2525,6 +2866,7 @@ export default function VideoEditor() {
 													cursorClickBounce={cursorClickBounce}
 													cursorClipToBounds={cursorClipToBounds}
 													isPreviewingZoom={isPreviewingZoom}
+													muteOriginalAudio={muteOriginalAudio}
 												/>
 											</div>
 										</div>
@@ -2711,6 +3053,11 @@ export default function VideoEditor() {
 											hasNativeCursorRecordingData(cursorRecordingData)
 										}
 										showCursorSettings={showCursorSettings}
+										videoDurationMs={duration > 0 ? Math.round(duration * 1000) : undefined}
+										onTTSSegmentsAdded={handleTTSSegmentsAdded}
+										onTTSSettingsChange={handleTTSSettingsChange}
+										muteOriginalAudio={muteOriginalAudio}
+										onMuteOriginalAudioChange={setMuteOriginalAudio}
 									/>
 								</div>
 							</div>
@@ -2759,6 +3106,12 @@ export default function VideoEditor() {
 									onBlurDelete={handleAnnotationDelete}
 									selectedBlurId={selectedBlurId}
 									onSelectBlur={handleSelectBlur}
+									ttsRegions={ttsRegions}
+									onTTSAdded={handleTTSAdded}
+									onTTSSpanChange={handleTTSSpanChange}
+									onTTSDelete={handleTTSDelete}
+									selectedTTSId={selectedTTSId}
+									onSelectTTS={handleSelectTTS}
 									aspectRatio={aspectRatio}
 									onAspectRatioChange={(ar) =>
 										pushState({

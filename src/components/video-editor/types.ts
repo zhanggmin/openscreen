@@ -426,3 +426,17 @@ function clamp(value: number, min: number, max: number) {
 	if (Number.isNaN(value)) return (min + max) / 2;
 	return Math.min(max, Math.max(min, value));
 }
+
+export interface TTSRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	content: string;
+	voice?: string;
+	rate?: number;
+	pitch?: number;
+	/** Pre-generated audio blob URL (e.g. from Aliyun TTS). Ephemeral, not persisted to disk. */
+	blobUrl?: string | null;
+	/** Base64-encoded audio data (with data URI prefix). Persisted in project JSON so TTS audio survives reload. */
+	audioData?: string | null;
+}

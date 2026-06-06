@@ -77,5 +77,32 @@
 			"couldNotOpenTitle": "无法打开文件",
 			"couldNotOpenMessage": "无法打开项目文件。它引用的视频可能已被移动或删除。"
 		}
+	},
+	"tts": {
+		"title": "文字转语音",
+		"subtitle": "从字幕生成音频",
+		"engineNotAvailable": "此浏览器不支持文字转语音功能",
+		"failedToLoadVoices": "加载声音失败",
+		"noCaptionsFound": "未找到字幕",
+		"voice": "声音",
+		"selectVoice": "选择声音",
+		"rate": "语速",
+		"pitch": "音调",
+		"volume": "音量",
+		"generate": "生成音频",
+		"generating": "正在生成音频...",
+		"generationComplete": "音频生成完成",
+		"segmentsGenerated": "已生成 {{count}} 个片段",
+		"generationFailed": "音频生成失败",
+		"previewAll": "全部预览",
+		"previewing": "正在预览...",
+		"clear": "清除",
+		"generatedSegments": "已生成的片段",
+		"captionsAvailable": "有 {{count}} 个字幕可用",
+		"cleared": "已清除",
+		"addedToTimeline": "已添加到时间线",
+		"segmentAdded": "片段已添加",
+		"addAllToTimeline": "全部添加",
+		"muteOriginalAudio": "关闭原视频声音"
 	}
 }

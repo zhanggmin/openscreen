@@ -10,7 +10,7 @@ import type {
 import { BackgroundLoadError } from "@/lib/wallpaper";
 import type { CursorRecordingData } from "@/native/contracts";
 import { getPlatform } from "@/utils/platformUtils";
-import { AudioProcessor } from "./audioEncoder";
+import { AudioProcessor, type ExportTTSRegion } from "./audioEncoder";
 import { FrameRenderer } from "./frameRenderer";
 import { VideoMuxer } from "./muxer";
 import { StreamingVideoDecoder } from "./streamingDecoder";
@@ -51,6 +51,8 @@ export interface VideoExporterConfig extends ExportConfig {
 	previewHeight?: number;
 	cursorTelemetry?: import("@/components/video-editor/types").CursorTelemetryPoint[];
 	cursorClickTimestamps?: number[];
+	muteOriginalAudio?: boolean;
+	ttsRegions?: ExportTTSRegion[];
 	onProgress?: (progress: ExportProgress) => void;
 }
 
@@ -266,11 +268,29 @@ export class VideoExporter {
 			await this.initializeEncoder(encoderPreference);
 
 			const sourceDemuxer = streamingDecoder.getDemuxer();
-			const audioExportCodec =
-				videoInfo.hasAudio && sourceDemuxer
-					? await AudioProcessor.selectSupportedExportCodecForSource(sourceDemuxer)
-					: null;
-			if (videoInfo.hasAudio && !audioExportCodec) {
+			const hasTTSAudio = (this.config.ttsRegions ?? []).some((r) => r.blobUrl || r.audioData);
+
+			// Select audio codec: use original audio's codec if available and not muted,
+			// otherwise fall back to a generic codec for TTS-only export.
+			let audioExportCodec: Awaited<
+				ReturnType<typeof AudioProcessor.selectSupportedExportCodecForSource>
+			> | null = null;
+			if (videoInfo.hasAudio && sourceDemuxer && !this.config.muteOriginalAudio) {
+				audioExportCodec = await AudioProcessor.selectSupportedExportCodecForSource(sourceDemuxer);
+				if (!audioExportCodec) {
+					console.warn("[VideoExporter] No supported audio export codec, exporting video-only.");
+				}
+			} else if (hasTTSAudio) {
+				// TTS-only export: use a generic AAC codec at 48kHz stereo
+				audioExportCodec = await AudioProcessor.selectSupportedExportCodec(48000, 2);
+			}
+
+			if (
+				videoInfo.hasAudio &&
+				!audioExportCodec &&
+				!this.config.muteOriginalAudio &&
+				!hasTTSAudio
+			) {
 				console.warn("[VideoExporter] No supported audio export codec, exporting video-only.");
 			}
 
@@ -461,9 +481,24 @@ export class VideoExporter {
 
 			if (hasAudio && audioExportCodec && !this.cancelled) {
 				const demuxer = streamingDecoder.getDemuxer();
-				if (demuxer) {
-					console.log("[VideoExporter] Processing audio track...");
-					this.audioProcessor = new AudioProcessor();
+				console.log("[VideoExporter] Processing audio track...");
+				this.audioProcessor = new AudioProcessor();
+
+				// When muted with TTS, we don't need the demuxer for original audio
+				if (this.config.muteOriginalAudio && hasTTSAudio) {
+					// TTS-only: no demuxer needed since process() will only render TTS
+					await this.audioProcessor.process(
+						null,
+						muxer,
+						this.config.videoUrl,
+						this.config.trimRegions,
+						this.config.speedRegions,
+						videoInfo.duration,
+						audioExportCodec,
+						this.config.ttsRegions,
+						this.config.muteOriginalAudio,
+					);
+				} else if (demuxer) {
 					await this.audioProcessor.process(
 						demuxer,
 						muxer,
@@ -472,6 +507,8 @@ export class VideoExporter {
 						this.config.speedRegions,
 						videoInfo.duration,
 						audioExportCodec,
+						this.config.ttsRegions,
+						this.config.muteOriginalAudio,
 					);
 				}
 			}

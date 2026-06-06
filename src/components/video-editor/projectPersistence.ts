@@ -36,6 +36,7 @@ import {
 	MIN_PLAYBACK_SPEED,
 	type SpeedRegion,
 	type TrimRegion,
+	type TTSRegion,
 	type WebcamLayoutPreset,
 	type WebcamMaskShape,
 	type WebcamPosition,
@@ -61,7 +62,7 @@ function normalizeWallpaperValue(value: string): string {
 	return CANONICAL_WALLPAPERS.has(canonical) ? canonical : DEFAULT_WALLPAPER;
 }
 
-export const PROJECT_VERSION = 2;
+export const PROJECT_VERSION = 3; // 从 2 升级到 3，因为添加了 ttsRegions
 
 export interface ProjectEditorState {
 	wallpaper: string;
@@ -76,6 +77,7 @@ export interface ProjectEditorState {
 	trimRegions: TrimRegion[];
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
+	ttsRegions: TTSRegion[];
 	aspectRatio: AspectRatio;
 	webcamLayoutPreset: WebcamLayoutPreset;
 	webcamMaskShape: WebcamMaskShape;
@@ -421,6 +423,29 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedTTSRegions: TTSRegion[] = Array.isArray(editor.ttsRegions)
+		? editor.ttsRegions
+				.filter((region): region is TTSRegion => Boolean(region && typeof region.id === "string"))
+				.map((region) => {
+					const rawStart = isFiniteNumber(region.startMs) ? Math.round(region.startMs) : 0;
+					const rawEnd = isFiniteNumber(region.endMs) ? Math.round(region.endMs) : rawStart + 1000;
+					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
+					const endMs = Math.max(startMs + 1, rawEnd);
+
+					return {
+						id: region.id,
+						startMs,
+						endMs,
+						content: typeof region.content === "string" ? region.content : "",
+						voice: typeof region.voice === "string" ? region.voice : undefined,
+						rate: typeof region.rate === "number" ? clamp(region.rate, 0.5, 2) : undefined,
+						pitch: typeof region.pitch === "number" ? clamp(region.pitch, 0, 2) : undefined,
+						audioData: typeof region.audioData === "string" ? region.audioData : undefined,
+						// NOTE: blobUrl is intentionally not persisted — it is an ephemeral in-memory URL
+					};
+				})
+		: [];
+
 	const rawCropX = isFiniteNumber(editor.cropRegion?.x)
 		? editor.cropRegion.x
 		: DEFAULT_EDITOR_LAYOUT_SETTINGS.cropRegion.x;
@@ -480,6 +505,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		trimRegions: normalizedTrimRegions,
 		speedRegions: normalizedSpeedRegions,
 		annotationRegions: normalizedAnnotationRegions,
+		ttsRegions: normalizedTTSRegions,
 		aspectRatio: normalizedAspectRatio,
 		webcamLayoutPreset: normalizedWebcamLayoutPreset,
 		webcamMaskShape:

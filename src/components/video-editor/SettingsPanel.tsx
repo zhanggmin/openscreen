@@ -9,6 +9,7 @@ import {
 	Image,
 	LayoutPanelTop,
 	Lock,
+	Mic,
 	MousePointerClick,
 	Palette,
 	SlidersHorizontal,
@@ -46,6 +47,7 @@ import {
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
 } from "@/lib/exporter";
+import type { CaptionAudioSegment, TTSSettings } from "@/lib/tts/types";
 import { cn } from "@/lib/utils";
 import { resolveImageWallpaperUrl, WALLPAPER_PATHS } from "@/lib/wallpaper";
 import { type AspectRatio, isPortraitAspectRatio } from "@/utils/aspectRatioUtils";
@@ -65,6 +67,7 @@ import {
 	DEFAULT_WEBCAM_SETTINGS,
 } from "./editorDefaults";
 import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
+import { TTSSettingsPanel } from "./TTSSettingsPanel";
 import type {
 	AnnotationRegion,
 	AnnotationType,
@@ -337,6 +340,12 @@ interface SettingsPanelProps {
 	onCursorClipToBoundsChange?: (clip: boolean) => void;
 	hasCursorData?: boolean;
 	showCursorSettings?: boolean;
+	videoDurationMs?: number;
+	onTTSAudioGenerated?: (audioBlob: Blob) => void;
+	onTTSSegmentsAdded?: (segments: CaptionAudioSegment[]) => void;
+	onTTSSettingsChange?: (settings: TTSSettings) => void;
+	muteOriginalAudio?: boolean;
+	onMuteOriginalAudioChange?: (mute: boolean) => void;
 }
 
 export default SettingsPanel;
@@ -350,7 +359,14 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
 	{ depth: 6, label: "5×" },
 ];
 
-type SettingsPanelMode = "background" | "effects" | "layout" | "cursor" | "export" | "timeline";
+type SettingsPanelMode =
+	| "background"
+	| "effects"
+	| "layout"
+	| "cursor"
+	| "export"
+	| "timeline"
+	| "tts";
 
 const MP4_EXPORT_SHORT_SIDES = {
 	medium: 720,
@@ -468,6 +484,12 @@ export function SettingsPanel({
 	onCursorClipToBoundsChange,
 	hasCursorData = false,
 	showCursorSettings = true,
+	videoDurationMs,
+	onTTSAudioGenerated,
+	onTTSSegmentsAdded,
+	onTTSSettingsChange,
+	muteOriginalAudio,
+	onMuteOriginalAudioChange,
 }: SettingsPanelProps) {
 	const t = useScopedT("settings");
 	const [activePanelMode, setActivePanelMode] = useState<SettingsPanelMode>("background");
@@ -616,6 +638,7 @@ export function SettingsPanel({
 		{ id: "effects", label: t("effects.title"), icon: SlidersHorizontal },
 		{ id: "layout", label: t("layout.title"), icon: LayoutPanelTop, disabled: !hasWebcam },
 		{ id: "timeline", label: t("timeline.title"), icon: Brackets },
+		{ id: "tts", label: t("tts.title"), icon: Mic },
 		...(hasCursorPanel
 			? [
 					{
@@ -1744,6 +1767,29 @@ export function SettingsPanel({
 												checked={showTrimWaveform}
 												onCheckedChange={onTrimWaveformChange}
 												className="data-[state=checked]:bg-[#34B27B] scale-90 ml-2 shrink-0"
+											/>
+										</div>
+									</AccordionContent>
+								</AccordionItem>
+							)}
+							{activePanelMode === "tts" && (
+								<AccordionItem value="tts" className="editor-panel-section px-3">
+									<AccordionTrigger className="py-2.5 hover:no-underline">
+										<div className="flex items-center gap-2">
+											<Mic className="w-4 h-4 text-[#34B27B]" />
+											<span className="text-xs font-medium">{t("tts.title")}</span>
+										</div>
+									</AccordionTrigger>
+									<AccordionContent className="pb-3">
+										<div className="min-h-0">
+											<TTSSettingsPanel
+												annotations={annotationRegions}
+												onTTSAudioGenerated={onTTSAudioGenerated}
+												videoDurationMs={videoDurationMs}
+												onTTSSegmentsAdded={onTTSSegmentsAdded}
+												onTTSSettingsChange={onTTSSettingsChange}
+												muteOriginalAudio={muteOriginalAudio}
+												onMuteOriginalAudioChange={onMuteOriginalAudioChange}
 											/>
 										</div>
 									</AccordionContent>
