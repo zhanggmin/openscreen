@@ -7,6 +7,7 @@ import {
 	FileDown,
 	Film,
 	Image,
+	Info,
 	LayoutPanelTop,
 	Lock,
 	Mic,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { type ComponentType, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import defaultCursorPreviewUrl from "@/assets/cursors/Cursor=Default.svg";
 import {
 	Accordion,
 	AccordionContent,
@@ -39,8 +41,11 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useScopedT } from "@/contexts/I18nContext";
+import { getAssetPath } from "@/lib/assetPath";
 import { WEBCAM_LAYOUT_PRESETS } from "@/lib/compositeLayout";
+import { CURSOR_THEMES, DEFAULT_CURSOR_THEME_ID } from "@/lib/cursor/cursorThemes";
 import type { ExportFormat, ExportQuality, GifFrameRate, GifSizePreset } from "@/lib/exporter";
 import {
 	calculateEffectiveSourceDimensions,
@@ -66,6 +71,7 @@ import {
 	DEFAULT_SOURCE_DIMENSIONS,
 	DEFAULT_WEBCAM_SETTINGS,
 } from "./editorDefaults";
+import { BLUR_REGIONS_ENABLED } from "./featureFlags";
 import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import { TTSSettingsPanel } from "./TTSSettingsPanel";
 import type {
@@ -85,6 +91,7 @@ import type {
 } from "./types";
 import {
 	DEFAULT_WEBCAM_MIRRORED,
+	DEFAULT_WEBCAM_REACTIVE_ZOOM,
 	MAX_ZOOM_SCALE,
 	MIN_ZOOM_SCALE,
 	ROTATION_3D_PRESET_ORDER,
@@ -170,10 +177,8 @@ function ZoomFocusCoordInput({
 	disabled?: boolean;
 	ariaLabel: string;
 }) {
-	// While the input is focused (user is editing), show their draft text
-	// so partial entries like "5" or "" don't get overwritten by re-renders.
-	// When not focused, mirror the live prop value so external changes
-	// (dragging the overlay on the preview) update the displayed number in real time.
+	// While focused, show the draft so partial entries like "5" or "" survive re-renders.
+	// While not focused, mirror the live prop so overlay drags update the number live.
 	const [draft, setDraft] = useState<string | null>(null);
 	const display = percent.toFixed(1);
 
@@ -248,6 +253,8 @@ interface SettingsPanelProps {
 	onZoomPreviewEnd?: () => void;
 	selectedZoomFocusMode?: ZoomFocusMode | null;
 	onZoomFocusModeChange?: (mode: ZoomFocusMode) => void;
+	/** When the global Auto-Focus toggle is on, the per-zoom selector is locked. */
+	focusModeLocked?: boolean;
 	selectedZoomFocus?: ZoomFocus | null;
 	onZoomFocusCoordinateChange?: (focus: ZoomFocus) => void;
 	onZoomFocusCoordinateCommit?: () => void;
@@ -322,6 +329,8 @@ interface SettingsPanelProps {
 	onWebcamMaskShapeChange?: (shape: import("./types").WebcamMaskShape) => void;
 	webcamMirrored?: boolean;
 	onWebcamMirroredChange?: (mirrored: boolean) => void;
+	webcamReactiveZoom?: boolean;
+	onWebcamReactiveZoomChange?: (reactive: boolean) => void;
 	webcamSizePreset?: WebcamSizePreset;
 	onWebcamSizePresetChange?: (size: WebcamSizePreset) => void;
 	onWebcamSizePresetCommit?: () => void;
@@ -338,6 +347,8 @@ interface SettingsPanelProps {
 	onCursorClickBounceChange?: (bounce: number) => void;
 	cursorClipToBounds?: boolean;
 	onCursorClipToBoundsChange?: (clip: boolean) => void;
+	cursorTheme?: string;
+	onCursorThemeChange?: (theme: string) => void;
 	hasCursorData?: boolean;
 	showCursorSettings?: boolean;
 	videoDurationMs?: number;
@@ -397,6 +408,7 @@ export function SettingsPanel({
 	onZoomPreviewEnd,
 	selectedZoomFocusMode,
 	onZoomFocusModeChange,
+	focusModeLocked = false,
 	selectedZoomFocus,
 	onZoomFocusCoordinateChange,
 	onZoomFocusCoordinateCommit,
@@ -466,6 +478,8 @@ export function SettingsPanel({
 	onWebcamMaskShapeChange,
 	webcamMirrored = DEFAULT_WEBCAM_MIRRORED,
 	onWebcamMirroredChange,
+	webcamReactiveZoom = DEFAULT_WEBCAM_REACTIVE_ZOOM,
+	onWebcamReactiveZoomChange,
 	webcamSizePreset = DEFAULT_WEBCAM_SETTINGS.sizePreset,
 	onWebcamSizePresetChange,
 	onWebcamSizePresetCommit,
@@ -482,6 +496,8 @@ export function SettingsPanel({
 	onCursorClickBounceChange,
 	cursorClipToBounds = DEFAULT_CURSOR_SETTINGS.clipToBounds,
 	onCursorClipToBoundsChange,
+	cursorTheme = DEFAULT_CURSOR_SETTINGS.theme,
+	onCursorThemeChange,
 	hasCursorData = false,
 	showCursorSettings = true,
 	videoDurationMs,
@@ -494,10 +510,29 @@ export function SettingsPanel({
 	const t = useScopedT("settings");
 	const [activePanelMode, setActivePanelMode] = useState<SettingsPanelMode>("background");
 	const sourceDimensions = formatSourceDimensions(videoElement, cropRegion);
-	// Resolved URLs are for DOM rendering only (backgroundImage). The canonical
-	// `/wallpapers/wallpaperN.jpg` form in WALLPAPER_PATHS is what gets persisted
-	// on click — never the machine-specific file:// URL.
+	// Resolved URLs are for DOM rendering only. We persist the canonical
+	// `/wallpapers/wallpaperN.jpg` form from WALLPAPER_PATHS, never the file:// URL.
 	const wallpaperPreviewUrls = useMemo(() => WALLPAPER_PATHS.map(resolveImageWallpaperUrl), []);
+	// Built-in "Default" plus each bundled theme. Thumbnails use the theme's arrow asset;
+	// the persisted value is the theme id.
+	const cursorThemeOptions = useMemo(
+		() => [
+			{
+				id: DEFAULT_CURSOR_THEME_ID,
+				name: t("cursor.themeDefault"),
+				previewUrl: defaultCursorPreviewUrl,
+			},
+			...CURSOR_THEMES.map((theme) => {
+				const previewPath = (theme.assets.arrow ?? theme.assets.pointer)?.assetPath;
+				return {
+					id: theme.id,
+					name: theme.name,
+					previewUrl: previewPath ? getAssetPath(previewPath) : defaultCursorPreviewUrl,
+				};
+			}),
+		],
+		[t],
+	);
 	const [customImages, setCustomImages] = useState<string[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const colorPalette = [
@@ -716,13 +751,12 @@ export function SettingsPanel({
 	const handleRemoveCustomImage = (imageUrl: string, event: React.MouseEvent) => {
 		event.stopPropagation();
 		setCustomImages((prev) => prev.filter((img) => img !== imageUrl));
-		// If the removed image was selected, clear selection
+		// If the removed image was selected, reset to the first wallpaper.
 		if (selected === imageUrl) {
 			onWallpaperChange(WALLPAPER_PATHS[0]);
 		}
 	};
 
-	// Find selected annotation
 	const selectedAnnotation = selectedAnnotationId
 		? annotationRegions.find((a) => a.id === selectedAnnotationId)
 		: null;
@@ -766,7 +800,7 @@ export function SettingsPanel({
 		</div>
 	);
 
-	// If an annotation is selected, show annotation settings instead
+	// Annotation selected: show its settings panel instead.
 	if (
 		selectedAnnotation &&
 		onAnnotationContentChange &&
@@ -800,7 +834,7 @@ export function SettingsPanel({
 		);
 	}
 
-	if (selectedBlur && onBlurDataChange && onBlurDelete) {
+	if (BLUR_REGIONS_ENABLED && selectedBlur && onBlurDataChange && onBlurDelete) {
 		return (
 			<div className="editor-inspector-shell flex min-w-0 flex-col h-full overflow-hidden">
 				<div className="min-h-0 flex-1 overflow-hidden">
@@ -965,32 +999,42 @@ export function SettingsPanel({
 								</div>
 							)}
 							{zoomEnabled && hasCursorTelemetry && (
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-[11px] font-medium text-slate-400">
-										{t("zoom.focusMode.title")}
-									</span>
-									<div className="grid w-32 grid-cols-2 gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.035] p-0.5">
-										{(["manual", "auto"] as const).map((mode) => {
-											const isActive = selectedZoomFocusMode === mode;
-											return (
-												<Button
-													key={mode}
-													type="button"
-													onClick={() => onZoomFocusModeChange?.(mode)}
-													className={cn(
-														"h-6 w-full rounded-md border px-1 text-center transition-all duration-150 ease-out cursor-pointer",
-														isActive
-															? "border-[#34B27B]/50 bg-[#34B27B] text-white"
-															: "border-transparent bg-transparent text-slate-400 hover:bg-white/[0.06] hover:text-slate-200",
-													)}
-												>
-													<span className="text-[10px] font-semibold capitalize">
-														{t(`zoom.focusMode.${mode}`)}
-													</span>
-												</Button>
-											);
-										})}
+								<div className="space-y-1.5">
+									<div className="flex items-center justify-between gap-3">
+										<span className="text-[11px] font-medium text-slate-400">
+											{t("zoom.focusMode.title")}
+										</span>
+										<div className="grid w-32 grid-cols-2 gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.035] p-0.5">
+											{(["manual", "auto"] as const).map((mode) => {
+												const isActive = selectedZoomFocusMode === mode;
+												return (
+													<Button
+														key={mode}
+														type="button"
+														disabled={focusModeLocked}
+														onClick={() => !focusModeLocked && onZoomFocusModeChange?.(mode)}
+														className={cn(
+															"h-6 w-full rounded-md border px-1 text-center transition-all duration-150 ease-out",
+															isActive
+																? "border-[#34B27B]/50 bg-[#34B27B] text-white"
+																: "border-transparent bg-transparent text-slate-400 hover:bg-white/[0.06] hover:text-slate-200",
+															focusModeLocked ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+														)}
+													>
+														<span className="text-[10px] font-semibold capitalize">
+															{t(`zoom.focusMode.${mode}`)}
+														</span>
+													</Button>
+												);
+											})}
+										</div>
 									</div>
+									{focusModeLocked && (
+										<div className="flex items-start gap-1 text-[10px] leading-snug text-slate-500">
+											<Info size={11} className="mt-px shrink-0" />
+											<span>{t("zoom.focusMode.lockedDisclaimer")}</span>
+										</div>
+									)}
 								</div>
 							)}
 							{zoomEnabled && onZoomPreviewStart && onZoomPreviewEnd && (
@@ -1276,6 +1320,31 @@ export function SettingsPanel({
 											</div>
 										)}
 										{webcamLayoutPreset === "picture-in-picture" && (
+											<div className="mt-2 flex items-center justify-between p-2 rounded-lg editor-control-surface">
+												<div className="flex items-center gap-1 text-[10px] font-medium text-slate-300">
+													<span>{t("layout.reactiveWebcam")}</span>
+													<Tooltip
+														content={t("layout.reactiveWebcamDescription")}
+														className="max-w-[220px] leading-snug whitespace-normal"
+													>
+														<button
+															type="button"
+															className="text-slate-400 transition-colors hover:text-slate-200"
+															aria-label={t("layout.reactiveWebcamDescription")}
+														>
+															<Info size={11} />
+														</button>
+													</Tooltip>
+												</div>
+												<Switch
+													checked={webcamReactiveZoom}
+													onCheckedChange={onWebcamReactiveZoomChange}
+													className="data-[state=checked]:bg-[#34B27B] scale-90"
+													aria-label={t("layout.reactiveWebcam")}
+												/>
+											</div>
+										)}
+										{webcamLayoutPreset === "picture-in-picture" && (
 											<div className="mt-2 p-2 rounded-lg editor-control-surface">
 												<div className="text-[10px] font-medium text-slate-300 mb-1.5">
 													{t("layout.webcamShape")}
@@ -1510,8 +1579,20 @@ export function SettingsPanel({
 												{showCursor && (
 													<>
 														<div className="flex items-center justify-between">
-															<div className="text-[10px] font-medium text-slate-300">
-																{t("cursor.clipToBounds")}
+															<div className="flex items-center gap-1 text-[10px] font-medium text-slate-300">
+																<span>{t("cursor.clipToBounds")}</span>
+																<Tooltip
+																	content={t("cursor.clipToBoundsDescription")}
+																	className="max-w-[220px] leading-snug whitespace-normal"
+																>
+																	<button
+																		type="button"
+																		className="text-slate-400 transition-colors hover:text-slate-200"
+																		aria-label={t("cursor.clipToBoundsDescription")}
+																	>
+																		<Info size={11} />
+																	</button>
+																</Tooltip>
 															</div>
 															<Switch
 																checked={cursorClipToBounds}
@@ -1520,6 +1601,41 @@ export function SettingsPanel({
 																aria-label={t("cursor.clipToBounds")}
 															/>
 														</div>
+														{cursorThemeOptions.length > 1 && (
+															<div className="space-y-1.5">
+																<div className="text-[10px] font-medium text-slate-300">
+																	{t("cursor.theme")}
+																</div>
+																<div className="flex flex-wrap gap-1.5">
+																	{cursorThemeOptions.map((option) => {
+																		const isSelected = cursorTheme === option.id;
+																		return (
+																			<button
+																				type="button"
+																				key={option.id}
+																				title={option.name}
+																				aria-label={option.name}
+																				aria-pressed={isSelected}
+																				onClick={() => onCursorThemeChange?.(option.id)}
+																				className={cn(
+																					"flex items-center justify-center w-8 h-8 rounded-lg border overflow-hidden transition-all duration-150 shadow-sm bg-white/5",
+																					isSelected
+																						? "border-[#34B27B] ring-1 ring-[#34B27B]/30"
+																						: "border-white/10 hover:border-[#34B27B]/40 opacity-80 hover:opacity-100",
+																				)}
+																			>
+																				<img
+																					src={option.previewUrl}
+																					alt=""
+																					className="w-5 h-5 object-contain"
+																					draggable={false}
+																				/>
+																			</button>
+																		);
+																	})}
+																</div>
+															</div>
+														)}
 														<div className="grid grid-cols-2 gap-2">
 															<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 																<div className="flex items-center justify-between mb-1">

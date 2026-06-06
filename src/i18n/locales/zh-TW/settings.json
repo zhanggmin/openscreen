@@ -47,7 +47,9 @@
 		"webcamShape": "攝影機形狀",
 		"webcamSize": "攝影機大小",
 		"noWebcam": "無網路攝影機",
-		"mirrorWebcam": "鏡像攝影機"
+		"mirrorWebcam": "鏡像攝影機",
+		"reactiveWebcam": "縮放時縮小",
+		"reactiveWebcamDescription": "放大影片時鏡頭會平滑縮小，以免遮擋內容。"
 	},
 	"effects": {
 		"title": "影片效果",
@@ -199,6 +201,8 @@
 		"errorLoadFailed": "無法載入該字體。請確認 Google Fonts URL 是否正確。"
 	},
 	"cursor": {
+		"theme": "游標樣式",
+		"themeDefault": "預設",
 		"show": "顯示游標",
 		"size": "大小",
 		"smoothing": "平滑",

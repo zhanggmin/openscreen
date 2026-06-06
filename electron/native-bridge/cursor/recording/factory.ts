@@ -2,7 +2,10 @@ import type { Rectangle } from "electron";
 import { MacNativeCursorRecordingSession } from "./macNativeCursorRecordingSession";
 import type { CursorRecordingSession } from "./session";
 import { TelemetryRecordingSession } from "./telemetryRecordingSession";
-import { WindowsNativeRecordingSession } from "./windowsNativeRecordingSession";
+import {
+	findCursorSamplerPath,
+	WindowsNativeRecordingSession,
+} from "./windowsNativeRecordingSession";
 
 interface CreateCursorRecordingSessionOptions {
 	getDisplayBounds: () => Rectangle | null;
@@ -17,11 +20,24 @@ export function createCursorRecordingSession(
 	options: CreateCursorRecordingSessionOptions,
 ): CursorRecordingSession {
 	if (options.platform === "win32") {
-		return new WindowsNativeRecordingSession({
+		const helperPath = findCursorSamplerPath();
+		if (helperPath) {
+			return new WindowsNativeRecordingSession({
+				getDisplayBounds: options.getDisplayBounds,
+				maxSamples: options.maxSamples,
+				sampleIntervalMs: options.sampleIntervalMs,
+				sourceId: options.sourceId,
+				startTimeMs: options.startTimeMs,
+			});
+		}
+		// Fallback: cursor-sampler.exe not built; use Electron screen API telemetry instead.
+		console.warn(
+			"[cursor] cursor-sampler.exe not found, falling back to TelemetryRecordingSession",
+		);
+		return new TelemetryRecordingSession({
 			getDisplayBounds: options.getDisplayBounds,
 			maxSamples: options.maxSamples,
 			sampleIntervalMs: options.sampleIntervalMs,
-			sourceId: options.sourceId,
 			startTimeMs: options.startTimeMs,
 		});
 	}
@@ -36,7 +52,7 @@ export function createCursorRecordingSession(
 	}
 
 	// Linux: capture cursor positions via Electron's `screen` API on an interval.
-	// No cursor sprites/assets and no clicks — just position telemetry.
+	// No cursor sprites/assets and no clicks, just position telemetry.
 	return new TelemetryRecordingSession({
 		getDisplayBounds: options.getDisplayBounds,
 		maxSamples: options.maxSamples,

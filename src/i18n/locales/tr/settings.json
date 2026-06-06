@@ -46,7 +46,9 @@
 		"dualFrame": "Çift Kare",
 		"webcamSize": "Webcam Boyutu",
 		"noWebcam": "Web kamerası yok",
-		"mirrorWebcam": "Web kamerasını aynala"
+		"mirrorWebcam": "Web kamerasını aynala",
+		"reactiveWebcam": "Yakınlaştırınca küçült",
+		"reactiveWebcamDescription": "Video yakınlaştırıldığında kamera yumuşakça küçülür, böylece yoldan çekilir."
 	},
 	"effects": {
 		"title": "Video Efektleri",
@@ -198,6 +200,8 @@
 		"errorLoadFailed": "Yazı tipi yüklenemedi. Lütfen Google Fonts URL'sinin doğruluğunu kontrol edin."
 	},
 	"cursor": {
+		"theme": "İmleç Stili",
+		"themeDefault": "Varsayılan",
 		"show": "İmleci Göster",
 		"size": "Boyut",
 		"smoothing": "Yumuşatma",

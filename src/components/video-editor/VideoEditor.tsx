@@ -56,6 +56,7 @@ import type { TTSSettings } from "@/lib/tts/types";
 import { WebSpeechEngine } from "@/lib/tts/webSpeechEngine";
 import {
 	getExportFolder,
+	getProjectFolder,
 	loadUserPreferences,
 	parentDirectoryOf,
 	saveUserPreferences,
@@ -90,6 +91,7 @@ import {
 } from "./projectPersistence";
 import { SettingsPanel } from "./SettingsPanel";
 import TimelineEditor from "./timeline/TimelineEditor";
+import { buildAutoZoomSuggestions } from "./timeline/zoomSuggestionUtils";
 import {
 	type AnnotationRegion,
 	type BlurData,
@@ -116,7 +118,7 @@ import {
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 
-/** Single Sonner slot for auto-caption progress so phases update in place instead of stacking. */
+/** Single Sonner slot so auto-caption phases update in place instead of stacking. */
 const AUTO_CAPTION_PROGRESS_TOAST_ID = "auto-caption-progress";
 
 /** Convert a blob: URL to a base64 data-URI string suitable for JSON serialization. */
@@ -215,6 +217,8 @@ export default function VideoEditor() {
 
 	const {
 		zoomRegions,
+		autoZoomEnabled,
+		autoFocusAll,
 		trimRegions,
 		speedRegions,
 		annotationRegions,
@@ -231,11 +235,12 @@ export default function VideoEditor() {
 		webcamLayoutPreset,
 		webcamMaskShape,
 		webcamMirrored,
+		webcamReactiveZoom,
 		webcamSizePreset,
 		webcamPosition,
 	} = editorState;
 
-	// ── Non-undoable state
+	// Non-undoable state
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [webcamVideoPath, setWebcamVideoPath] = useState<string | null>(null);
@@ -281,8 +286,8 @@ export default function VideoEditor() {
 	} | null>(null);
 	const [isFullscreen, setIsFullscreen] = useState(false);
 	const [showCloseConfirmDialog, setShowCloseConfirmDialog] = useState(false);
-	// Unsaved-changes confirmation for New Project / Load Project actions.
-	// (The window-close flow uses showCloseConfirmDialog above.)
+	// Unsaved-changes confirmation for New Project / Load Project.
+	// The window-close flow uses showCloseConfirmDialog above.
 	const [confirmDialogVariant, setConfirmDialogVariant] = useState<
 		"newProject" | "loadProject" | null
 	>(null);
@@ -315,6 +320,7 @@ export default function VideoEditor() {
 	const [cursorClipToBounds, setCursorClipToBounds] = useState(
 		DEFAULT_CURSOR_SETTINGS.clipToBounds,
 	);
+	const [cursorTheme, setCursorTheme] = useState(DEFAULT_CURSOR_SETTINGS.theme);
 	const [nativePlatform, setNativePlatform] = useState<NativePlatform | null>(null);
 	const [recordingCursorCaptureMode, setRecordingCursorCaptureMode] =
 		useState<CursorCaptureMode | null>(null);
@@ -350,9 +356,9 @@ export default function VideoEditor() {
 	}, [isPlaying]);
 
 	const { shortcuts, isMac } = useShortcuts();
-	// Native Windows recordings include captured cursor assets. Native macOS
-	// recordings hide the system cursor in ScreenCaptureKit and use telemetry
-	// samples with OpenScreen's default arrow asset for the editable overlay.
+	// Windows recordings include captured cursor assets. macOS hides the system
+	// cursor in ScreenCaptureKit and renders telemetry samples with OpenScreen's
+	// default arrow asset for the editable overlay.
 	const hasEditableCursorRecording =
 		recordingCursorCaptureMode === "editable-overlay" &&
 		(nativePlatform === "win32" || nativePlatform === "darwin") &&
@@ -449,6 +455,10 @@ export default function VideoEditor() {
 			setRecordingCursorCaptureMode(projectCursorCaptureMode);
 			setCurrentProjectPath(path ?? null);
 
+			// A loaded project keeps its zooms exactly as saved, so never auto-suggest
+			// over it (even if it has zero zooms because the user deleted them all).
+			autoProcessedSourceRef.current = sourcePath;
+
 			pushState({
 				wallpaper: normalizedEditor.wallpaper,
 				shadowIntensity: normalizedEditor.shadowIntensity,
@@ -459,6 +469,8 @@ export default function VideoEditor() {
 				padding: normalizedEditor.padding,
 				cropRegion: normalizedEditor.cropRegion,
 				zoomRegions: normalizedEditor.zoomRegions,
+				autoZoomEnabled: normalizedEditor.autoZoomEnabled,
+				autoFocusAll: normalizedEditor.autoFocusAll,
 				trimRegions: normalizedEditor.trimRegions,
 				speedRegions: normalizedEditor.speedRegions,
 				annotationRegions: normalizedEditor.annotationRegions,
@@ -467,6 +479,7 @@ export default function VideoEditor() {
 				webcamLayoutPreset: normalizedEditor.webcamLayoutPreset,
 				webcamMaskShape: normalizedEditor.webcamMaskShape,
 				webcamMirrored: normalizedEditor.webcamMirrored,
+				webcamReactiveZoom: normalizedEditor.webcamReactiveZoom,
 				webcamSizePreset: normalizedEditor.webcamSizePreset,
 				webcamPosition: normalizedEditor.webcamPosition,
 			});
@@ -475,6 +488,7 @@ export default function VideoEditor() {
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
 			setGifSizePreset(normalizedEditor.gifSizePreset);
+			setCursorTheme(normalizedEditor.cursorTheme);
 
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
@@ -538,6 +552,8 @@ export default function VideoEditor() {
 			padding,
 			cropRegion,
 			zoomRegions,
+			autoZoomEnabled,
+			autoFocusAll,
 			trimRegions,
 			speedRegions,
 			annotationRegions,
@@ -546,6 +562,7 @@ export default function VideoEditor() {
 			webcamLayoutPreset,
 			webcamMaskShape,
 			webcamMirrored,
+			webcamReactiveZoom,
 			webcamSizePreset,
 			webcamPosition,
 			exportQuality,
@@ -553,9 +570,11 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			cursorTheme,
 		});
 	}, [
 		currentProjectMedia,
+		cursorTheme,
 		wallpaper,
 		shadowIntensity,
 		showBlur,
@@ -565,6 +584,8 @@ export default function VideoEditor() {
 		padding,
 		cropRegion,
 		zoomRegions,
+		autoZoomEnabled,
+		autoFocusAll,
 		trimRegions,
 		speedRegions,
 		annotationRegions,
@@ -573,6 +594,7 @@ export default function VideoEditor() {
 		webcamLayoutPreset,
 		webcamMaskShape,
 		webcamMirrored,
+		webcamReactiveZoom,
 		webcamSizePreset,
 		webcamPosition,
 		exportQuality,
@@ -636,8 +658,8 @@ export default function VideoEditor() {
 						createProjectSnapshot({ screenVideoPath: result.path }, INITIAL_EDITOR_STATE),
 					);
 				}
-				// No video/project/session — leave videoPath null so the
-				// EditorEmptyState dashboard renders instead of an error screen.
+				// No video/project/session, so leave videoPath null and let the
+				// EditorEmptyState dashboard render instead of an error screen.
 			} catch (err) {
 				setError("Error loading video: " + String(err));
 			} finally {
@@ -648,8 +670,7 @@ export default function VideoEditor() {
 		loadInitialData();
 	}, [applyLoadedProject]);
 
-	// Track whether user preferences have been loaded to avoid
-	// overwriting saved prefs with defaults on the first render
+	// Avoid overwriting saved prefs with defaults before they've loaded.
 	const [prefsHydrated, setPrefsHydrated] = useState(false);
 
 	// Load persisted user preferences on mount (intentionally runs once)
@@ -712,6 +733,8 @@ export default function VideoEditor() {
 				padding,
 				cropRegion,
 				zoomRegions,
+				autoZoomEnabled,
+				autoFocusAll,
 				trimRegions,
 				speedRegions,
 				annotationRegions,
@@ -720,6 +743,7 @@ export default function VideoEditor() {
 				webcamLayoutPreset,
 				webcamMaskShape,
 				webcamMirrored,
+				webcamReactiveZoom,
 				webcamSizePreset,
 				webcamPosition,
 				exportQuality,
@@ -727,6 +751,7 @@ export default function VideoEditor() {
 				gifFrameRate,
 				gifLoop,
 				gifSizePreset,
+				cursorTheme,
 			};
 			const projectData = createProjectData(currentProjectMedia, editorState);
 
@@ -735,8 +760,8 @@ export default function VideoEditor() {
 					.split(/[\\/]/)
 					.pop()
 					?.replace(/\.[^.]+$/, "") || `project-${Date.now()}`;
-			// Match the normalization path used by `currentProjectSnapshot` so the
-			// post-save baseline compares equal and `hasUnsavedChanges` clears.
+			// Normalize the same way as currentProjectSnapshot so the post-save
+			// baseline compares equal and hasUnsavedChanges clears.
 			const projectSnapshot = createProjectSnapshot(currentProjectMedia, editorState);
 			const result = await nativeBridgeClient.project.saveProjectFile(
 				projectData,
@@ -774,6 +799,8 @@ export default function VideoEditor() {
 			padding,
 			cropRegion,
 			zoomRegions,
+			autoZoomEnabled,
+			autoFocusAll,
 			trimRegions,
 			speedRegions,
 			annotationRegions,
@@ -782,6 +809,7 @@ export default function VideoEditor() {
 			webcamLayoutPreset,
 			webcamMaskShape,
 			webcamMirrored,
+			webcamReactiveZoom,
 			webcamSizePreset,
 			webcamPosition,
 			exportQuality,
@@ -789,6 +817,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			cursorTheme,
 			videoPath,
 			t,
 		],
@@ -846,7 +875,7 @@ export default function VideoEditor() {
 	}, []);
 
 	const doLoadProject = useCallback(async () => {
-		const result = await nativeBridgeClient.project.loadProjectFile();
+		const result = await nativeBridgeClient.project.loadProjectFile(getProjectFolder());
 
 		if (result.canceled) {
 			return;
@@ -861,6 +890,13 @@ export default function VideoEditor() {
 		if (!restored) {
 			toast.error(t("project.invalidFormat"));
 			return;
+		}
+
+		if (result.path) {
+			const folder = parentDirectoryOf(result.path);
+			if (folder) {
+				saveUserPreferences({ projectFolder: folder });
+			}
 		}
 
 		toast.success(t("project.loadedFrom", { path: result.path ?? "" }));
@@ -916,6 +952,7 @@ export default function VideoEditor() {
 		setCursorMotionBlur(DEFAULT_CURSOR_SETTINGS.motionBlur);
 		setCursorClickBounce(DEFAULT_CURSOR_SETTINGS.clickBounce);
 		setCursorClipToBounds(DEFAULT_CURSOR_SETTINGS.clipToBounds);
+		setCursorTheme(DEFAULT_CURSOR_SETTINGS.theme);
 		// Reset region ID counters.
 		nextZoomIdRef.current = 1;
 		nextTrimIdRef.current = 1;
@@ -1082,6 +1119,9 @@ export default function VideoEditor() {
 				depth: DEFAULT_ZOOM_DEPTH,
 				customScale: ZOOM_DEPTH_SCALES[DEFAULT_ZOOM_DEPTH],
 				focus: { cx: 0.5, cy: 0.5 },
+				// Auto-Focus on means new zooms follow the cursor too.
+				focusMode: autoFocusAll ? "auto" : undefined,
+				source: "manual",
 			};
 			pushState((prev) => ({ zoomRegions: [...prev.zoomRegions, newRegion] }));
 			setSelectedZoomId(id);
@@ -1090,24 +1130,91 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 			setSelectedBlurId(null);
 		},
-		[pushState],
+		[pushState, autoFocusAll],
 	);
 
-	const handleZoomSuggested = useCallback(
-		(span: Span, focus: ZoomFocus) => {
-			const id = `zoom-${nextZoomIdRef.current++}`;
-			const newRegion: ZoomRegion = {
-				id,
-				startMs: Math.round(span.start),
-				endMs: Math.round(span.end),
+	// Builds fresh "auto" zoom regions from cursor telemetry without overlapping
+	// existing ones. Used by both the on-load auto-suggest pass and the wand toggle.
+	const buildAutoZoomRegions = useCallback(
+		(existingRegions: ZoomRegion[]): ZoomRegion[] => {
+			const totalMs = Math.round(duration * 1000);
+			const suggestions = buildAutoZoomSuggestions({
+				cursorTelemetry,
+				totalMs,
+				existingRegions,
+				defaultDurationMs: Math.max(1000, Math.round(totalMs * 0.05)),
+			});
+			return suggestions.map((suggestion) => ({
+				id: `zoom-${nextZoomIdRef.current++}`,
+				startMs: Math.round(suggestion.span.start),
+				endMs: Math.round(suggestion.span.end),
 				depth: DEFAULT_ZOOM_DEPTH,
 				customScale: ZOOM_DEPTH_SCALES[DEFAULT_ZOOM_DEPTH],
-				focus: clampFocusToDepth(focus, DEFAULT_ZOOM_DEPTH),
-			};
-			// Bulk suggest must not steal selection — keeping a zoom selected hides
-			// the export panel (SettingsPanel gates it on !hasTimelineSelection),
-			// trapping users who just want to export after auto-zoom.
-			pushState((prev) => ({ zoomRegions: [...prev.zoomRegions, newRegion] }));
+				focus: clampFocusToDepth(suggestion.focus, DEFAULT_ZOOM_DEPTH),
+				focusMode: autoFocusAll ? ("auto" as const) : undefined,
+				source: "auto" as const,
+			}));
+		},
+		[cursorTelemetry, duration, autoFocusAll],
+	);
+
+	// Auto-suggest zooms once per fresh recording (no existing zooms, telemetry
+	// available, wand enabled). Loaded projects are marked processed elsewhere so
+	// they're never touched. The ref guard runs this once per source and survives undo.
+	const autoProcessedSourceRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (!autoZoomEnabled || !cursorTelemetrySourcePath) return;
+		if (autoProcessedSourceRef.current === cursorTelemetrySourcePath) return;
+		if (cursorTelemetry.length < 2 || duration <= 0) return;
+		// Only auto-suggest for a fresh recording; don't disturb existing zooms.
+		if (zoomRegions.length > 0) {
+			autoProcessedSourceRef.current = cursorTelemetrySourcePath;
+			return;
+		}
+		const newRegions = buildAutoZoomRegions([]);
+		autoProcessedSourceRef.current = cursorTelemetrySourcePath;
+		if (newRegions.length === 0) return;
+		pushState((prev) => ({ zoomRegions: [...prev.zoomRegions, ...newRegions] }));
+	}, [
+		autoZoomEnabled,
+		cursorTelemetrySourcePath,
+		cursorTelemetry,
+		duration,
+		zoomRegions,
+		buildAutoZoomRegions,
+		pushState,
+	]);
+
+	// Wand toggle: ON regenerates suggestions around existing zooms; OFF removes
+	// only untouched auto zooms (manual and edited-to-manual survive).
+	const handleToggleAutoZoom = useCallback(
+		(enabled: boolean) => {
+			if (enabled) {
+				autoProcessedSourceRef.current = cursorTelemetrySourcePath;
+				pushState((prev) => ({
+					autoZoomEnabled: true,
+					zoomRegions: [...prev.zoomRegions, ...buildAutoZoomRegions(prev.zoomRegions)],
+				}));
+			} else {
+				pushState((prev) => ({
+					autoZoomEnabled: false,
+					zoomRegions: prev.zoomRegions.filter((region) => region.source !== "auto"),
+				}));
+			}
+		},
+		[pushState, buildAutoZoomRegions, cursorTelemetrySourcePath],
+	);
+
+	// Flip every zoom between auto (cursor-follow) and manual at once.
+	const handleToggleAutoFocusAll = useCallback(
+		(on: boolean) => {
+			pushState((prev) => ({
+				autoFocusAll: on,
+				zoomRegions: prev.zoomRegions.map((region) => ({
+					...region,
+					focusMode: on ? "auto" : "manual",
+				})),
+			}));
 		},
 		[pushState],
 	);
@@ -1139,6 +1246,7 @@ export default function VideoEditor() {
 								...region,
 								startMs: Math.round(span.start),
 								endMs: Math.round(span.end),
+								source: "manual",
 							}
 						: region,
 				),
@@ -1164,12 +1272,14 @@ export default function VideoEditor() {
 		[pushState],
 	);
 
-	// Focus drag: updateState for live preview, commitState on pointer-up
+	// Focus drag: updateState for live preview, commitState on pointer-up.
 	const handleZoomFocusChange = useCallback(
 		(id: string, focus: ZoomFocus) => {
 			updateState((prev) => ({
 				zoomRegions: prev.zoomRegions.map((region) =>
-					region.id === id ? { ...region, focus: clampFocusToDepth(focus, region.depth) } : region,
+					region.id === id
+						? { ...region, focus: clampFocusToDepth(focus, region.depth), source: "manual" }
+						: region,
 				),
 			}));
 		},
@@ -1187,6 +1297,7 @@ export default function VideoEditor() {
 								depth,
 								customScale: ZOOM_DEPTH_SCALES[depth],
 								focus: clampFocusToDepth(region.focus, depth),
+								source: "manual",
 							}
 						: region,
 				),
@@ -1202,7 +1313,9 @@ export default function VideoEditor() {
 			if (!Number.isFinite(rounded)) return;
 			updateState((prev) => ({
 				zoomRegions: prev.zoomRegions.map((region) =>
-					region.id === selectedZoomId ? { ...region, customScale: rounded } : region,
+					region.id === selectedZoomId
+						? { ...region, customScale: rounded, source: "manual" }
+						: region,
 				),
 			}));
 		},
@@ -1218,7 +1331,7 @@ export default function VideoEditor() {
 			if (!selectedZoomId) return;
 			pushState((prev) => ({
 				zoomRegions: prev.zoomRegions.map((region) =>
-					region.id === selectedZoomId ? { ...region, focusMode } : region,
+					region.id === selectedZoomId ? { ...region, focusMode, source: "manual" } : region,
 				),
 			}));
 		},
@@ -1245,9 +1358,9 @@ export default function VideoEditor() {
 					if (region.id !== selectedZoomId) return region;
 					if (preset === null) {
 						const { rotationPreset: _p, ...rest } = region;
-						return rest;
+						return { ...rest, source: "manual" };
 					}
-					return { ...region, rotationPreset: preset };
+					return { ...region, rotationPreset: preset, source: "manual" };
 				}),
 			}));
 		},
@@ -1920,7 +2033,7 @@ export default function VideoEditor() {
 			}
 
 			if (matchesShortcut(e, shortcuts.playPause, isMac)) {
-				// Allow space only in inputs/textareas
+				// Let space pass through inside inputs/textareas.
 				if (isInput) {
 					return;
 				}
@@ -2060,9 +2173,8 @@ export default function VideoEditor() {
 				return;
 			}
 
-			// Ask the user where to save BEFORE starting the export. This avoids the
-			// post-export save dialog getting hidden behind other windows after a
-			// long-running export.
+			// Pick the save path before exporting, otherwise the save dialog can end up
+			// hidden behind other windows after a long-running export.
 			const isGifFormat = settings.format === "gif";
 			const targetFileName = `export-${Date.now()}.${isGifFormat ? "gif" : "mp4"}`;
 			const pickResult = await window.electronAPI.pickExportSavePath(
@@ -2098,7 +2210,7 @@ export default function VideoEditor() {
 						? getNativeAspectRatioValue(sourceWidth, sourceHeight, cropRegion)
 						: getAspectRatioValue(aspectRatio);
 
-				// Get preview CONTAINER dimensions for scaling
+				// Preview container dimensions, used for scaling.
 				const playbackRef = videoPlaybackRef.current;
 				const containerElement = playbackRef?.containerRef?.current;
 				const previewWidth = containerElement?.clientWidth || DEFAULT_SOURCE_DIMENSIONS.width;
@@ -2132,10 +2244,12 @@ export default function VideoEditor() {
 						cursorMotionBlur,
 						cursorClickBounce,
 						cursorClipToBounds,
+						cursorTheme,
 						annotationRegions,
 						webcamLayoutPreset,
 						webcamMaskShape,
 						webcamMirrored,
+						webcamReactiveZoom,
 						webcamSizePreset,
 						webcamPosition,
 						previewWidth,
@@ -2224,10 +2338,12 @@ export default function VideoEditor() {
 						cursorMotionBlur,
 						cursorClickBounce,
 						cursorClipToBounds,
+						cursorTheme,
 						annotationRegions,
 						webcamLayoutPreset,
 						webcamMaskShape,
 						webcamMirrored,
+						webcamReactiveZoom,
 						webcamSizePreset,
 						webcamPosition,
 						previewWidth,
@@ -2305,8 +2421,8 @@ export default function VideoEditor() {
 			} finally {
 				setIsExporting(false);
 				exporterRef.current = null;
-				// Reset dialog state to ensure it can be opened again on next export
-				// This fixes the bug where second export doesn't show save dialog
+				// Reset so the next export can reopen the dialog (second export
+				// otherwise wouldn't show the save dialog).
 				setShowExportDialog(false);
 				setExportProgress(null);
 			}
@@ -2332,6 +2448,7 @@ export default function VideoEditor() {
 			webcamLayoutPreset,
 			webcamMaskShape,
 			webcamMirrored,
+			webcamReactiveZoom,
 			webcamSizePreset,
 			webcamPosition,
 			exportQuality,
@@ -2346,6 +2463,7 @@ export default function VideoEditor() {
 			cursorClipToBounds,
 			muteOriginalAudio,
 			ttsRegions,
+			cursorTheme,
 			t,
 		],
 	);
@@ -2484,9 +2602,8 @@ export default function VideoEditor() {
 				);
 				let transcribedFromTrimmedBuffer = true;
 
-				// Some recordings come back empty after leading-silence trimming even though the full
-				// source has recognizable speech. Retry once against the untouched audio buffer before
-				// giving up so we do not show "no speech detected" for a spoken clip.
+				// Leading-silence trimming can return empty even when the full source has
+				// speech. Retry once against the untrimmed buffer before giving up.
 				if (segmentsRaw.length === 0 && trimSec > 0) {
 					({ segments: segmentsRaw, granularity } = await transcribeMono16kToSegments(samples, {
 						trimRegions,
@@ -2758,7 +2875,7 @@ export default function VideoEditor() {
 				</div>
 			</div>
 
-			{/* Empty state — shown when no video is loaded */}
+			{/* Empty state shown when no video is loaded */}
 			{!videoPath && (
 				<div className="flex-1 min-h-0 relative">
 					<EditorEmptyState
@@ -2819,6 +2936,7 @@ export default function VideoEditor() {
 													webcamLayoutPreset={webcamLayoutPreset}
 													webcamMaskShape={webcamMaskShape}
 													webcamMirrored={webcamMirrored}
+													webcamReactiveZoom={webcamReactiveZoom}
 													webcamSizePreset={webcamSizePreset}
 													webcamPosition={webcamPosition}
 													onWebcamPositionChange={(pos) => updateState({ webcamPosition: pos })}
@@ -2865,6 +2983,7 @@ export default function VideoEditor() {
 													cursorMotionBlur={cursorMotionBlur}
 													cursorClickBounce={cursorClickBounce}
 													cursorClipToBounds={cursorClipToBounds}
+													cursorTheme={cursorTheme}
 													isPreviewingZoom={isPreviewingZoom}
 													muteOriginalAudio={muteOriginalAudio}
 												/>
@@ -2914,6 +3033,7 @@ export default function VideoEditor() {
 										onZoomFocusModeChange={(mode) =>
 											selectedZoomId && handleZoomFocusModeChange(mode)
 										}
+										focusModeLocked={autoFocusAll}
 										selectedZoomFocus={
 											selectedZoomId
 												? (zoomRegions.find((z) => z.id === selectedZoomId)?.focus ?? null)
@@ -2964,7 +3084,11 @@ export default function VideoEditor() {
 										webcamMaskShape={webcamMaskShape}
 										onWebcamMaskShapeChange={(shape) => pushState({ webcamMaskShape: shape })}
 										webcamMirrored={webcamMirrored}
+										webcamReactiveZoom={webcamReactiveZoom}
 										onWebcamMirroredChange={(mirrored) => pushState({ webcamMirrored: mirrored })}
+										onWebcamReactiveZoomChange={(reactive) =>
+											pushState({ webcamReactiveZoom: reactive })
+										}
 										webcamSizePreset={webcamSizePreset}
 										onWebcamSizePresetChange={(v) => updateState({ webcamSizePreset: v })}
 										onWebcamSizePresetCommit={commitState}
@@ -3048,6 +3172,8 @@ export default function VideoEditor() {
 										onCursorClickBounceChange={setCursorClickBounce}
 										cursorClipToBounds={cursorClipToBounds}
 										onCursorClipToBoundsChange={setCursorClipToBounds}
+										cursorTheme={cursorTheme}
+										onCursorThemeChange={setCursorTheme}
 										hasCursorData={
 											cursorTelemetry.length > 0 ||
 											hasNativeCursorRecordingData(cursorRecordingData)
@@ -3074,10 +3200,12 @@ export default function VideoEditor() {
 									videoDuration={duration}
 									currentTime={currentTime}
 									onSeek={handleSeek}
-									cursorTelemetry={cursorTelemetry}
 									zoomRegions={zoomRegions}
 									onZoomAdded={handleZoomAdded}
-									onZoomSuggested={handleZoomSuggested}
+									autoZoomEnabled={autoZoomEnabled}
+									onToggleAutoZoom={handleToggleAutoZoom}
+									autoFocusAll={autoFocusAll}
+									onToggleAutoFocusAll={handleToggleAutoFocusAll}
 									onZoomSpanChange={handleZoomSpanChange}
 									onZoomDelete={handleZoomDelete}
 									selectedZoomId={selectedZoomId}

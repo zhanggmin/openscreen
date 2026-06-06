@@ -46,7 +46,9 @@
 		"webcamShape": "Hình dạng máy ảnh",
 		"webcamSize": "Kích thước Webcam",
 		"noWebcam": "Không có webcam",
-		"mirrorWebcam": "Lật webcam"
+		"mirrorWebcam": "Lật webcam",
+		"reactiveWebcam": "Thu nhỏ khi phóng to",
+		"reactiveWebcamDescription": "Camera thu nhỏ mượt mà khi video được phóng to, để không che khuất."
 	},
 	"effects": {
 		"title": "Hiệu ứng video",
@@ -198,6 +200,8 @@
 		"errorLoadFailed": "Không thể tải phông chữ. Vui lòng xác minh URL Google Fonts là chính xác."
 	},
 	"cursor": {
+		"theme": "Kiểu con trỏ",
+		"themeDefault": "Mặc định",
 		"show": "Hiện con trỏ",
 		"size": "Kích thước",
 		"smoothing": "Làm mượt",
