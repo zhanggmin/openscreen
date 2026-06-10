@@ -2,31 +2,13 @@
 schema_version: 1
 locale: zh-CN
 branch: dev
-exported_at: "2026-06-04T10:53:43Z"
+exported_at: "2026-06-08T07:56:56Z"
 modules:
     "":
-        dir_name: OpenScreen 跨平台录屏与视频编辑桌面应用
-        title: OpenScreen 跨平台录屏与视频编辑桌面应用
+        dir_name: OpenScreen 跨平台桌面录屏与编辑工作台
+        title: OpenScreen 跨平台桌面录屏与编辑工作台
         scope:
-            - package.json
-            - README.md
-            - CONTRIBUTING.md
-            - .gitignore
-            - tsconfig.json
-            - vite.config.ts
-            - electron-builder.json5
-            - playwright.config.ts
-            - vitest.config.ts
-            - biome.json
-            - tailwind.config.cjs
-            - postcss.config.cjs
-            - components.json
-            - index.html
-            - flake.nix
-            - flake.lock
             - .editorconfig
-            - AGENTS.md
-            - macos.entitlements
             - .env.example
             - .envrc
             - .github\CODEOWNERS
@@ -39,6 +21,7 @@ modules:
             - .github\workflows\discord.yaml
             - .github\workflows\publish-winget.yml
             - .github\workflows\update-homebrew-cask.yml
+            - .gitignore
             - .husky\_\.gitignore
             - .husky\_\applypatch-msg
             - .husky\_\commit-msg
@@ -58,7 +41,101 @@ modules:
             - .husky\_\prepare-commit-msg
             - .husky\pre-commit
             - .nvmrc
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\_module.yaml
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\技术栈.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\架构设计.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\概述.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\编码规范.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\_module.yaml
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\技术栈.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\架构设计.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\概述.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\编码规范.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\_module.yaml
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\技术栈.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\架构设计.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\概述.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\编码规范.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\_module.yaml
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\技术栈.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\架构设计.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\概述.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\特殊配置与命令.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\编码规范.md
+            - .qoder\repowiki\knowledge\zh\_index.yaml
+            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\_module.yaml
+            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\技术栈.md
+            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\架构设计.md
+            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\概述.md
+            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\编码规范.md
+            - .qoder\repowiki\zh\content\API参考\API参考.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\Electron IPC API.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\原生桥接处理器.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\录制流处理器.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\游标录制API.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\系统集成API.md
+            - .qoder\repowiki\zh\content\API参考\Electron IPC API\项目文件操作.md
+            - .qoder\repowiki\zh\content\API参考\React组件API\React组件API.md
+            - .qoder\repowiki\zh\content\API参考\React组件API\UI组件库API.md
+            - .qoder\repowiki\zh\content\API参考\React组件API\核心编辑器组件.md
+            - .qoder\repowiki\zh\content\API参考\React组件API\组件组合模式.md
+            - .qoder\repowiki\zh\content\API参考\原生服务API\原生服务API.md
+            - .qoder\repowiki\zh\content\API参考\原生服务API\游标服务API.md
+            - .qoder\repowiki\zh\content\API参考\原生服务API\系统服务API.md
+            - .qoder\repowiki\zh\content\API参考\原生服务API\项目服务API.md
+            - .qoder\repowiki\zh\content\API参考\数据类型与接口.md
+            - .qoder\repowiki\zh\content\UI组件库\UI组件库.md
+            - .qoder\repowiki\zh\content\UI组件库\反馈组件.md
+            - .qoder\repowiki\zh\content\UI组件库\基础组件.md
+            - .qoder\repowiki\zh\content\UI组件库\布局组件.md
+            - .qoder\repowiki\zh\content\UI组件库\表单组件.md
+            - .qoder\repowiki\zh\content\原生桥接系统\原生桥接架构设计.md
+            - .qoder\repowiki\zh\content\原生桥接系统\原生桥接系统.md
+            - .qoder\repowiki\zh\content\原生桥接系统\游标服务.md
+            - .qoder\repowiki\zh\content\原生桥接系统\状态管理.md
+            - .qoder\repowiki\zh\content\原生桥接系统\系统服务.md
+            - .qoder\repowiki\zh\content\原生桥接系统\项目服务.md
+            - .qoder\repowiki\zh\content\国际化系统.md
+            - .qoder\repowiki\zh\content\导出系统\GIF导出实现.md
+            - .qoder\repowiki\zh\content\导出系统\MP4导出实现.md
+            - .qoder\repowiki\zh\content\导出系统\导出管道架构.md
+            - .qoder\repowiki\zh\content\导出系统\导出系统.md
+            - .qoder\repowiki\zh\content\开发者指南.md
+            - .qoder\repowiki\zh\content\录制系统\原生录制系统.md
+            - .qoder\repowiki\zh\content\录制系统\屏幕录制系统.md
+            - .qoder\repowiki\zh\content\录制系统\录制工作流程与控制.md
+            - .qoder\repowiki\zh\content\录制系统\录制数据流处理.md
+            - .qoder\repowiki\zh\content\录制系统\录制系统.md
+            - .qoder\repowiki\zh\content\快速开始.md
+            - .qoder\repowiki\zh\content\构建与部署.md
+            - .qoder\repowiki\zh\content\测试策略.md
+            - .qoder\repowiki\zh\content\游标遥测系统\智能缩放算法.md
+            - .qoder\repowiki\zh\content\游标遥测系统\游标资产管理系统.md
+            - .qoder\repowiki\zh\content\游标遥测系统\游标遥测数据采集.md
+            - .qoder\repowiki\zh\content\游标遥测系统\游标遥测系统.md
+            - .qoder\repowiki\zh\content\状态管理.md
+            - .qoder\repowiki\zh\content\系统架构\Electron主进程架构.md
+            - .qoder\repowiki\zh\content\系统架构\IPC通信系统.md
+            - .qoder\repowiki\zh\content\系统架构\React渲染器架构.md
+            - .qoder\repowiki\zh\content\系统架构\窗口管理与路由.md
+            - .qoder\repowiki\zh\content\系统架构\系统架构.md
+            - .qoder\repowiki\zh\content\视频编辑系统\TTS语音合成系统.md
+            - .qoder\repowiki\zh\content\视频编辑系统\导出对话框.md
+            - .qoder\repowiki\zh\content\视频编辑系统\时间线编辑器.md
+            - .qoder\repowiki\zh\content\视频编辑系统\注释系统.md
+            - .qoder\repowiki\zh\content\视频编辑系统\视觉效果系统.md
+            - .qoder\repowiki\zh\content\视频编辑系统\视频播放器.md
+            - .qoder\repowiki\zh\content\视频编辑系统\视频编辑器组件.md
+            - .qoder\repowiki\zh\content\视频编辑系统\视频编辑系统.md
+            - .qoder\repowiki\zh\content\视频编辑系统\设置面板.md
+            - .qoder\repowiki\zh\content\项目概述.md
+            - .qoder\repowiki\zh\meta\repowiki-metadata.json
+            - AGENTS.md
+            - CONTRIBUTING.md
             - LICENSE
+            - README.md
+            - biome.json
+            - components.json
             - dist-electron\main.js
             - dist-electron\preload.mjs
             - docs\01-getting-started\01-getting-started.md
@@ -76,11 +153,13 @@ modules:
             - docs\05-export\01-export-pipeline-architecture.md
             - docs\README.md
             - docs\architecture\native-bridge.md
+            - docs\dev\aliyun-tts-api.md
             - docs\engineering\macos-native-recorder-roadmap.md
             - docs\engineering\windows-native-recorder-roadmap.md
             - docs\testing\macos-native-cursor.md
             - docs\testing\windows-native-cursor.md
             - docs\tests\writing-tests.md
+            - electron-builder.json5
             - electron\electron-env.d.ts
             - electron\globalShortcut.ts
             - electron\i18n.ts
@@ -125,6 +204,8 @@ modules:
             - electron\preload.ts
             - electron\recording\webm-duration.ts
             - electron\windows.ts
+            - flake.lock
+            - flake.nix
             - icons\icons\mac\icon.icns
             - icons\icons\png\1024x1024.png
             - icons\icons\png\128x128.png
@@ -136,10 +217,49 @@ modules:
             - icons\icons\png\512x512.png
             - icons\icons\png\64x64.png
             - icons\icons\win\icon.ico
+            - index.html
+            - macos.entitlements
             - nix\hm-module.nix
             - nix\module.nix
             - nix\package.nix
             - package-lock.json
+            - package.json
+            - playwright.config.ts
+            - postcss.config.cjs
+            - public\cursors\among-us-sus-knife-and-red-animated\arrow.png
+            - public\cursors\among-us-sus-knife-and-red-animated\pointer.png
+            - public\cursors\black-and-rainbow-stroke-gradient-animated\arrow.png
+            - public\cursors\black-and-rainbow-stroke-gradient-animated\pointer.png
+            - public\cursors\black-pixel\arrow.png
+            - public\cursors\black-pixel\pointer.png
+            - public\cursors\christmas-miles-morales\arrow.png
+            - public\cursors\christmas-miles-morales\pointer.png
+            - public\cursors\hello-kitty-watermelon\arrow.png
+            - public\cursors\hello-kitty-watermelon\pointer.png
+            - public\cursors\hollow-knight-and-game-arrow\arrow.png
+            - public\cursors\hollow-knight-and-game-arrow\pointer.png
+            - public\cursors\hollow-knight-nail-sword-and-mask\arrow.png
+            - public\cursors\hollow-knight-nail-sword-and-mask\pointer.png
+            - public\cursors\mickey-mouse-black-hand-inflated-glove\arrow.png
+            - public\cursors\mickey-mouse-black-hand-inflated-glove\pointer.png
+            - public\cursors\naruto-akatsuki-cloud-arrow\arrow.png
+            - public\cursors\naruto-akatsuki-cloud-arrow\pointer.png
+            - public\cursors\old-roblox\arrow.png
+            - public\cursors\old-roblox\pointer.png
+            - public\cursors\pink-glossy-arrow-and-hand-3d\arrow.png
+            - public\cursors\pink-glossy-arrow-and-hand-3d\pointer.png
+            - public\cursors\pinky-pixel\arrow.png
+            - public\cursors\pinky-pixel\pointer.png
+            - public\cursors\pokemon-neon-gengar\arrow.png
+            - public\cursors\pokemon-neon-gengar\pointer.png
+            - public\cursors\sanrio-gudetama-and-arrow-kawaii\arrow.png
+            - public\cursors\sanrio-gudetama-and-arrow-kawaii\pointer.png
+            - public\cursors\sanrio-kuromi-skull-arrow\arrow.png
+            - public\cursors\sanrio-kuromi-skull-arrow\pointer.png
+            - public\cursors\solo-leveling-sung-jinwoo-dark-flames\arrow.png
+            - public\cursors\solo-leveling-sung-jinwoo-dark-flames\pointer.png
+            - public\cursors\spring-gradient\arrow.png
+            - public\cursors\spring-gradient\pointer.png
             - public\openscreen.png
             - public\preview3.png
             - public\preview4.png
@@ -164,10 +284,12 @@ modules:
             - public\wallpapers\wallpaper8.jpg
             - public\wallpapers\wallpaper9.jpg
             - public\wasm\web-demuxer.wasm
+            - scripts\before-pack.cjs
             - scripts\build-macos-screencapturekit-helper.mjs
             - scripts\build-windows-wgc-helper.mjs
             - scripts\build_macos.sh
             - scripts\capture-openscreen-preview.mjs
+            - scripts\fetch-caption-model.mjs
             - scripts\i18n-check.mjs
             - scripts\inspect-native-cursor-click-bounce.mjs
             - scripts\test-windows-native-cursor.mjs
@@ -254,6 +376,7 @@ modules:
             - src\components\video-editor\customPlaybackSpeed.ts
             - src\components\video-editor\editorDefaults.test.ts
             - src\components\video-editor\editorDefaults.ts
+            - src\components\video-editor\featureFlags.ts
             - src\components\video-editor\index.ts
             - src\components\video-editor\projectPersistence.test.ts
             - src\components\video-editor\projectPersistence.ts
@@ -280,6 +403,8 @@ modules:
             - src\components\video-editor\videoPlayback\uploadedCursorAssets.ts
             - src\components\video-editor\videoPlayback\videoEventHandlers.ts
             - src\components\video-editor\videoPlayback\zoomRegionUtils.ts
+            - src\components\video-editor\videoPlayback\zoomSpring.test.ts
+            - src\components\video-editor\videoPlayback\zoomSpring.ts
             - src\components\video-editor\videoPlayback\zoomTransform.ts
             - src\contexts\I18nContext.tsx
             - src\contexts\ShortcutsContext.tsx
@@ -408,6 +533,9 @@ modules:
             - src\lib\compositeLayout.ts
             - src\lib\cursorTelemetryBuffer.test.ts
             - src\lib\cursorTelemetryBuffer.ts
+            - src\lib\cursor\cursorPathSmoothing.test.ts
+            - src\lib\cursor\cursorPathSmoothing.ts
+            - src\lib\cursor\cursorThemes.ts
             - src\lib\cursor\nativeCursor.test.ts
             - src\lib\cursor\nativeCursor.ts
             - src\lib\customFonts.ts
@@ -472,28 +600,33 @@ modules:
             - src\utils\platformUtils.ts
             - src\utils\timeUtils.ts
             - src\vite-env.d.ts
+            - tailwind.config.cjs
             - tests\e2e\gif-export.spec.ts
             - tests\e2e\windows-native-checklist.spec.ts
             - tests\fixtures\sample-inflated-duration.webm
             - tests\fixtures\sample.webm
+            - tsconfig.json
             - tsconfig.node.json
+            - vite.config.ts
             - vitest.browser.config.ts
+            - vitest.config.ts
         source_files: []
         children: []
         depends_on: []
         related_to: []
     docs:
-        dir_name: OpenScreen 项目文档与架构指南
-        title: OpenScreen 项目文档与架构指南
+        dir_name: OpenScreen 项目文档与架构知识库
+        title: OpenScreen 项目文档与架构知识库
         scope:
             - docs/
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: electron_main
     electron_main:
-        dir_name: Electron 主进程编排与原生能力桥接
-        title: Electron 主进程编排与原生能力桥接
+        dir_name: Electron 主进程核心与原生能力桥接
+        title: Electron 主进程核心与原生能力桥接
         scope:
             - electron/
         source_files: []
@@ -502,9 +635,10 @@ modules:
         depends_on: []
         related_to:
             - path: renderer_app
+            - path: docs
     electron_main/app_bootstrap:
-        dir_name: Electron 应用引导与主进程核心
-        title: Electron 应用引导与主进程核心
+        dir_name: Electron 应用引导与窗口管理
+        title: Electron 应用引导与窗口管理
         scope:
             - electron/main.ts
             - electron/preload.ts
@@ -517,8 +651,8 @@ modules:
         depends_on: []
         related_to: []
     renderer_app:
-        dir_name: 视频编辑与渲染工作台
-        title: 视频编辑与渲染工作台
+        dir_name: 视频编辑与渲染引擎
+        title: 视频编辑与渲染引擎
         scope:
             - src/
         source_files: []

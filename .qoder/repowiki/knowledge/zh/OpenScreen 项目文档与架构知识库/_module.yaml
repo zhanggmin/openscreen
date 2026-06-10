@@ -1,8 +1,8 @@
 schema_version: 1
-module_path: renderer_app
-title: 视频编辑与渲染工作台
+module_path: docs
+title: OpenScreen 项目文档与架构知识库
 scope:
-    - src/
+    - docs/
 source_files: []
 depends_on: []
 related_to:

@@ -225,12 +225,164 @@ export type NativeBridgeRequest =
 				videoPath?: string;
 			};
 			requestId?: string;
+	  }
+	| {
+			/** DemoBuilder domain — CRUD for demo projects and screenshot assets. */
+			domain: "demo";
+			action: "createProject";
+			payload?: {
+				name?: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			domain: "demo";
+			action: "listProjects";
+			payload?: EmptyPayload;
+			requestId?: string;
+	  }
+	| {
+			domain: "demo";
+			action: "loadProject";
+			payload: {
+				projectId: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			domain: "demo";
+			action: "saveProject";
+			payload: {
+				projectData: unknown;
+			};
+			requestId?: string;
+	  }
+	| {
+			domain: "demo";
+			action: "deleteProject";
+			payload: {
+				projectId: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			/** Import a screenshot file into a demo project's assets directory. */
+			domain: "demo";
+			action: "importScreenshot";
+			payload: {
+				projectId: string;
+				filePath: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			/** Open a native file picker for screenshots and import them. */
+			domain: "demo";
+			action: "pickAndImportScreenshots";
+			payload: {
+				projectId: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			/** Delete a screenshot asset file from disk. */
+			domain: "demo";
+			action: "deleteScreenshot";
+			payload: {
+				projectId: string;
+				screenshotId: string;
+				fileName: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			/** Open the DemoBuilder editor window. */
+			domain: "demo";
+			action: "openDemoEditor";
+			payload?: {
+				projectId?: string;
+			};
+			requestId?: string;
+	  }
+	| {
+			/** Export a demo project to video, gif, or pdf. */
+			domain: "demo";
+			action: "exportProject";
+			payload: {
+				projectId: string;
+				format: "video" | "gif" | "pdf";
+			};
+			requestId?: string;
 	  };
 
 export type NativeBridgeEventName =
 	| "project.contextChanged"
 	| "cursor.providerChanged"
-	| "cursor.telemetryLoaded";
+	| "cursor.telemetryLoaded"
+	| "demo.projectChanged";
+
+// ─── Demo Domain Result Types ────────────────────────────────────────────────
+
+export interface DemoProjectListItem {
+	id: string;
+	name: string;
+	updatedAt: number;
+	screenshotCount: number;
+	stepCount: number;
+}
+
+export interface DemoProjectCreateResult {
+	success: boolean;
+	project?: unknown;
+	projectId?: string;
+	error?: string;
+}
+
+export interface DemoProjectListResult {
+	success: boolean;
+	projects?: DemoProjectListItem[];
+	error?: string;
+}
+
+export interface DemoProjectLoadResult {
+	success: boolean;
+	project?: unknown;
+	error?: string;
+}
+
+export interface DemoProjectSaveResult {
+	success: boolean;
+	error?: string;
+}
+
+export interface DemoProjectDeleteResult {
+	success: boolean;
+	error?: string;
+}
+
+export interface DemoScreenshotImportResult {
+	success: boolean;
+	screenshot?: {
+		id: string;
+		fileName: string;
+		filePath: string;
+		width: number;
+		height: number;
+		fileSize: number;
+	};
+	error?: string;
+}
+
+export interface DemoScreenshotDeleteResult {
+	success: boolean;
+	error?: string;
+}
+
+export interface DemoExportResult {
+	success: boolean;
+	filePath?: string;
+	error?: string;
+}
 
 export interface NativeBridgeEvent<TPayload = unknown> {
 	name: NativeBridgeEventName;

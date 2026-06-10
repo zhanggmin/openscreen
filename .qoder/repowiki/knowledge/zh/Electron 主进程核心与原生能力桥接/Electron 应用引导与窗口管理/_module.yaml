@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: electron_main/app_bootstrap
+title: Electron 应用引导与窗口管理
+scope:
+    - electron/main.ts
+    - electron/preload.ts
+    - electron/windows.ts
+    - electron/globalShortcut.ts
+    - electron/i18n.ts
+    - electron/electron-env.d.ts
+source_files: []
+depends_on: []
+related_to: []

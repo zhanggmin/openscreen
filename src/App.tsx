@@ -14,6 +14,11 @@ const ShortcutsConfigDialog = lazy(() =>
 		default: module.ShortcutsConfigDialog,
 	})),
 );
+const DemoEditor = lazy(() =>
+	import("./components/demo-builder/DemoEditor").then((module) => ({
+		default: module.DemoEditor,
+	})),
+);
 
 export default function App() {
 	const [windowType, setWindowType] = useState(
@@ -99,6 +104,18 @@ export default function App() {
 							<ShortcutsConfigDialog />
 						</Suspense>
 					</ShortcutsProvider>
+				);
+			case "demo-editor":
+				return (
+					<Suspense
+						fallback={
+							<div className="flex items-center justify-center h-screen bg-[#09090b]">
+								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34B27B]" />
+							</div>
+						}
+					>
+						<DemoEditor />
+					</Suspense>
 				);
 			default:
 				return (

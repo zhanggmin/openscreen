@@ -62,8 +62,6 @@ result-*
 
 #others
 
-# Qoder IDE
-.qoder/
 
 **/*.import
 

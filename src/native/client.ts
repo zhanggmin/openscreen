@@ -2,6 +2,13 @@ import {
 	type CursorCapabilities,
 	type CursorRecordingData,
 	type CursorTelemetryPoint,
+	type DemoProjectCreateResult,
+	type DemoProjectDeleteResult,
+	type DemoProjectListResult,
+	type DemoProjectLoadResult,
+	type DemoProjectSaveResult,
+	type DemoScreenshotDeleteResult,
+	type DemoScreenshotImportResult,
 	NATIVE_BRIDGE_CHANNEL,
 	type NativeBridgeRequest,
 	type NativeBridgeResponse,
@@ -135,6 +142,67 @@ export const nativeBridgeClient = {
 				domain: "cursor",
 				action: "getTelemetry",
 				payload: videoPath ? { videoPath } : {},
+			}),
+	},
+	demo: {
+		createProject: (name?: string) =>
+			requireNativeBridgeData<DemoProjectCreateResult>({
+				domain: "demo",
+				action: "createProject",
+				payload: name ? { name } : {},
+			}),
+		listProjects: () =>
+			requireNativeBridgeData<DemoProjectListResult>({
+				domain: "demo",
+				action: "listProjects",
+			}),
+		loadProject: (projectId: string) =>
+			requireNativeBridgeData<DemoProjectLoadResult>({
+				domain: "demo",
+				action: "loadProject",
+				payload: { projectId },
+			}),
+		saveProject: (projectData: unknown) =>
+			requireNativeBridgeData<DemoProjectSaveResult>({
+				domain: "demo",
+				action: "saveProject",
+				payload: { projectData },
+			}),
+		deleteProject: (projectId: string) =>
+			requireNativeBridgeData<DemoProjectDeleteResult>({
+				domain: "demo",
+				action: "deleteProject",
+				payload: { projectId },
+			}),
+		importScreenshot: (projectId: string, filePath: string) =>
+			requireNativeBridgeData<DemoScreenshotImportResult>({
+				domain: "demo",
+				action: "importScreenshot",
+				payload: { projectId, filePath },
+			}),
+		pickAndImportScreenshots: (projectId: string) =>
+			requireNativeBridgeData<DemoScreenshotImportResult[]>({
+				domain: "demo",
+				action: "pickAndImportScreenshots",
+				payload: { projectId },
+			}),
+		deleteScreenshot: (projectId: string, screenshotId: string, fileName: string) =>
+			requireNativeBridgeData<DemoScreenshotDeleteResult>({
+				domain: "demo",
+				action: "deleteScreenshot",
+				payload: { projectId, screenshotId, fileName },
+			}),
+		openDemoEditor: (projectId?: string) =>
+			requireNativeBridgeData<{ opened: boolean }>({
+				domain: "demo",
+				action: "openDemoEditor",
+				payload: projectId ? { projectId } : {},
+			}),
+		exportProject: (projectId: string, format: "video" | "gif" | "pdf") =>
+			requireNativeBridgeData<import("./contracts").DemoExportResult>({
+				domain: "demo",
+				action: "exportProject",
+				payload: { projectId, format },
 			}),
 	},
 };

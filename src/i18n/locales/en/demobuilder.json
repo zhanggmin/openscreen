@@ -1,0 +1,201 @@
+{
+	"dashboard": {
+		"title": "DemoBuilder",
+		"newProject": "New Demo Project",
+		"emptyTitle": "No demo projects yet",
+		"emptyAction": "Create your first demo project",
+		"stepCount": "{{count}} steps",
+		"imageCount": "{{count}} images"
+	},
+	"editor": {
+		"defaultTitle": "DemoBuilder Editor",
+		"unsavedChanges": "Unsaved changes",
+		"play": "Play",
+		"stop": "Stop",
+		"export": "Export"
+	},
+	"sidebar": {
+		"background": "Background",
+		"settings": "Settings",
+		"sound": "Sound",
+		"export": "Export",
+		"aspectRatio": "Aspect Ratio",
+		"bgTab": {
+			"wallpaper": "Wallpaper",
+			"color": "Color",
+			"gradient": "Gradient"
+		},
+		"blurBg": "Blur Background",
+		"roundness": "Roundness",
+		"padding": "Padding",
+		"shadow": "Shadow",
+		"off": "Off",
+		"clickSound": "Mouse Click Sound",
+		"bgMusic": "Background Music",
+		"bgMusicOn": "Selected",
+		"bgMusicOff": "None",
+		"bgMusicVolume": "Volume",
+		"exportMp4": "Export as MP4",
+		"exportMp4Desc": "Generate MP4 video file",
+		"exportPdf": "Export as PDF",
+		"exportPdfDesc": "Coming soon"
+	},
+	"stepPanel": {
+		"title": "Steps",
+		"importScreenshots": "Import Screenshots",
+		"unusedScreenshots": "Unused Screenshots",
+		"addStep": "Add Step",
+		"removeStep": "Remove Step",
+		"moveUp": "Move Up",
+		"moveDown": "Move Down",
+		"previewStep": "Preview Step"
+	},
+	"timeline": {
+		"title": "Timeline",
+		"stepCount": "{{count}} steps",
+		"noImage": "No image",
+		"stepLabel": "Step {{number}}",
+		"addStep": "Add Step",
+		"importImages": "Import Images",
+		"addCursorAnnotation": "Add Cursor Annotation",
+		"addHighlightArea": "Add Highlight Area",
+		"deleteStep": "Delete Step"
+	},
+	"bottomBar": {
+		"undo": "Undo",
+		"redo": "Redo",
+		"play": "Play",
+		"stepCount": "{{count}} steps",
+		"duration": "{{seconds}}s"
+	},
+	"canvas": {
+		"noScreenshot": "No screenshot for this step",
+		"drawHotspotHint": "Drag to draw a hotspot area",
+		"clickToPlaceCursor": "Click on the image to place a cursor marker",
+		"dragToDrawHighlight": "Drag on the image to draw a highlight area",
+		"playing": "Playing",
+		"stopPlayback": "Stop"
+	},
+	"toolbar": {
+		"cursorAnnotation": "Cursor Marker",
+		"cursorAnnotationTitle": "Click on canvas to place a cursor position marker. During playback, a click animation will be shown.",
+		"highlightAnnotation": "Highlight Area",
+		"highlightAnnotationTitle": "Drag on canvas to select a rectangular area that will be highlighted during playback.",
+		"cancel": "Cancel"
+	},
+	"properties": {
+		"selectStepHint": "Select a step to edit",
+		"stepSection": "Step",
+		"title": "Title",
+		"description": "Description",
+		"cursorSection": "Cursor",
+		"cursorStyle": "Style",
+		"cursorStyleOptions": {
+			"default": "Default",
+			"hand": "Hand",
+			"mac": "macOS",
+			"windows": "Windows",
+			"custom": "Custom"
+		},
+		"movementType": "Movement Type",
+		"movementTypeOptions": {
+			"linear": "Linear",
+			"easing": "Easing",
+			"bezier": "Bezier"
+		},
+		"duration": "Duration (ms)",
+		"clickEffect": "Click Effect",
+		"clickEffectOptions": {
+			"none": "None",
+			"ripple": "Ripple",
+			"zoom": "Zoom",
+			"flash": "Flash"
+		},
+		"clickSound": "Click Sound",
+		"clickSoundEnable": "Enable",
+		"subtitleSection": "Subtitle",
+		"subtitleText": "Text",
+		"subtitlePlaceholder": "Subtitle text for this step...",
+		"subtitlePosition": "Position",
+		"subtitlePositionOptions": {
+			"bottom": "Bottom",
+			"top": "Top",
+			"center": "Center"
+		},
+		"fontSize": "Font Size",
+		"bold": "Bold",
+		"italic": "Italic",
+		"hotspotSection": "Hotspot",
+		"label": "Label",
+		"labelPlaceholder": "Add text description for the annotation...",
+		"highlightStyle": "Highlight Style",
+		"highlightStyleOptions": {
+			"border": "Border",
+			"background": "Background",
+			"pulse": "Pulse"
+		},
+		"highlightShape": "Highlight Shape",
+		"highlightShapeOptions": {
+			"rect": "Rectangle",
+			"circle": "Circle",
+			"ellipse": "Ellipse"
+		},
+		"clickAnimation": "Click Animation",
+		"jumpToStep": "Jump to Step",
+		"jumpToStepPlaceholder": "Step ID or leave empty",
+		"position": "Position",
+		"deleteHotspot": "Delete Hotspot",
+		"tooltipLabel": "Floating Tooltip",
+		"tooltipPlaceholder": "Text shown after mouse click during playback...",
+		"tooltipHint": "This text appears above the cursor when the mouse moves to this annotation and clicks during playback",
+		"highlightColor": "Highlight Color",
+		"highlightDuration": "Display Duration",
+		"cursorMarkerTitle": "Cursor Marker",
+		"highlightAreaTitle": "Highlight Area",
+		"deleteMarker": "Delete Marker",
+		"deleteHighlight": "Delete Highlight",
+		"positionInfo": "Position",
+		"sizeInfo": "Size",
+		"elementList": "Elements",
+		"noElements": "No annotation elements in this step",
+		"transitionSection": "Transition",
+		"transitionType": "Transition Type",
+		"transitionDuration": "Duration (ms)",
+		"transitionTypeOptions": {
+			"none": "None",
+			"fade": "Fade",
+			"slide-left": "Slide Left",
+			"slide-right": "Slide Right",
+			"slide-up": "Slide Up",
+			"zoom": "Zoom",
+			"dissolve": "Dissolve",
+			"wipe": "Wipe"
+		}
+	},
+	"player": {
+		"play": "Play",
+		"pause": "Pause",
+		"exit": "Exit",
+		"previous": "Previous",
+		"next": "Next",
+		"stepCounter": "Step {{current}} / {{total}}",
+		"noScreenshot": "No screenshot for this step"
+	},
+	"playbackControls": {
+		"stepOf": "Step {{current}}/{{total}}",
+		"playAll": "Play All",
+		"stopAll": "Stop"
+	},
+	"export": {
+		"title": "Export Tutorial",
+		"formatVideo": "MP4 Video (via Remotion)",
+		"formatGif": "Animated GIF",
+		"formatPdf": "PDF Manual",
+		"cancel": "Cancel",
+		"export": "Export",
+		"exporting": "Exporting...",
+		"resultSuccess": "Exported to: {{path}}",
+		"resultFailed": "Export failed: {{error}}",
+		"resultError": "Export error: {{error}}"
+	}
+}

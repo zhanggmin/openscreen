@@ -1,4 +1,13 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
+import type {
+	DemoProjectCreateResult,
+	DemoProjectDeleteResult,
+	DemoProjectListResult,
+	DemoProjectLoadResult,
+	DemoProjectSaveResult,
+	DemoScreenshotDeleteResult,
+	DemoScreenshotImportResult,
+} from "../../src/native/contracts";
 import {
 	NATIVE_BRIDGE_CHANNEL,
 	NATIVE_BRIDGE_VERSION,
@@ -12,6 +21,7 @@ import {
 import type { CursorTelemetryLoadResult } from "../native-bridge/cursor/adapter";
 import { TelemetryCursorAdapter } from "../native-bridge/cursor/telemetryCursorAdapter";
 import { CursorService } from "../native-bridge/services/cursorService";
+import { DemoService } from "../native-bridge/services/demoService";
 import { ProjectService } from "../native-bridge/services/projectService";
 import { SystemService } from "../native-bridge/services/systemService";
 import { NativeBridgeStateStore } from "../native-bridge/store";
@@ -37,6 +47,10 @@ export interface NativeBridgeContext {
 		videoPath: string,
 	) => Promise<import("../../src/native/contracts").CursorRecordingData>;
 	loadCursorTelemetry: (videoPath: string) => Promise<CursorTelemetryLoadResult>;
+	/** Open the DemoBuilder editor window (optionally loading an existing project). */
+	openDemoEditorWindow: (projectId?: string) => void;
+	/** Get the current DemoBuilder editor BrowserWindow, if any. */
+	getDemoEditorWindow: () => BrowserWindow | null;
 }
 
 function normalizePlatform(platform: NodeJS.Platform): NativePlatform {
@@ -119,6 +133,10 @@ export function registerNativeBridgeHandlers(context: NativeBridgeContext) {
 		getPlatform: () => platform,
 		getAssetBasePath: context.resolveAssetBasePath,
 		getCursorCapabilities: () => cursorService.getCapabilities(),
+	});
+	const demoService = new DemoService({
+		openDemoEditorWindow: context.openDemoEditorWindow,
+		getDemoEditorWindow: context.getDemoEditorWindow,
 	});
 
 	ipcMain.handle(NATIVE_BRIDGE_CHANNEL, async (_, request: unknown) => {
@@ -216,6 +234,72 @@ export function registerNativeBridgeHandlers(context: NativeBridgeContext) {
 								requestId,
 								"UNSUPPORTED_ACTION",
 								`Unsupported cursor action: ${action}`,
+							);
+					}
+				}
+
+				case "demo": {
+					const action = request.action as string;
+					switch (request.action) {
+						case "createProject":
+							return createSuccessResponse<DemoProjectCreateResult>(
+								requestId,
+								await demoService.createProject(request.payload?.name),
+							);
+						case "listProjects":
+							return createSuccessResponse<DemoProjectListResult>(
+								requestId,
+								await demoService.listProjects(),
+							);
+						case "loadProject":
+							return createSuccessResponse<DemoProjectLoadResult>(
+								requestId,
+								await demoService.loadProject(request.payload.projectId),
+							);
+						case "saveProject":
+							return createSuccessResponse<DemoProjectSaveResult>(
+								requestId,
+								await demoService.saveProject(request.payload.projectData),
+							);
+						case "deleteProject":
+							return createSuccessResponse<DemoProjectDeleteResult>(
+								requestId,
+								await demoService.deleteProject(request.payload.projectId),
+							);
+						case "importScreenshot":
+							return createSuccessResponse<DemoScreenshotImportResult>(
+								requestId,
+								await demoService.importScreenshot(
+									request.payload.projectId,
+									request.payload.filePath,
+								),
+							);
+						case "pickAndImportScreenshots": {
+							const results = await demoService.pickAndImportScreenshots(request.payload.projectId);
+							return createSuccessResponse(requestId, results);
+						}
+						case "deleteScreenshot":
+							return createSuccessResponse<DemoScreenshotDeleteResult>(
+								requestId,
+								await demoService.deleteScreenshot(
+									request.payload.projectId,
+									request.payload.screenshotId,
+									request.payload.fileName,
+								),
+							);
+						case "openDemoEditor":
+							demoService.openDemoEditor(request.payload?.projectId);
+							return createSuccessResponse(requestId, { opened: true });
+						case "exportProject":
+							return createSuccessResponse<import("../../src/native/contracts").DemoExportResult>(
+								requestId,
+								await demoService.exportProject(request.payload.projectId, request.payload.format),
+							);
+						default:
+							return createErrorResponse(
+								requestId,
+								"UNSUPPORTED_ACTION",
+								`Unsupported demo action: ${action}`,
 							);
 					}
 				}

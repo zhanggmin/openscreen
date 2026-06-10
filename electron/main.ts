@@ -21,9 +21,11 @@ import { mainT, setMainLocale } from "./i18n";
 import { getSelectedDesktopSource, registerIpcHandlers } from "./ipc/handlers";
 import {
 	createCountdownOverlayWindow,
+	createDemoEditorWindow,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
+	getDemoEditorWindow,
 } from "./windows";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -176,6 +178,11 @@ function setupApplicationMenu() {
 					label: mainT("dialogs", "unsavedChanges.newProject") || "New Project",
 					accelerator: "CmdOrCtrl+N",
 					click: () => sendEditorMenuAction("menu-new-project"),
+				},
+				{
+					label: "New Demo Tutorial…",
+					accelerator: "CmdOrCtrl+Shift+D",
+					click: () => createDemoEditorWindow(),
 				},
 				{ type: "separator" as const },
 				{

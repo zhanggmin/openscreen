@@ -1,0 +1,201 @@
+{
+	"dashboard": {
+		"title": "图文教程",
+		"newProject": "新建图文项目",
+		"emptyTitle": "暂无图文项目",
+		"emptyAction": "创建你的第一个图文项目",
+		"stepCount": "{{count}} 个步骤",
+		"imageCount": "{{count}} 张图片"
+	},
+	"editor": {
+		"defaultTitle": "图文教程编辑器",
+		"unsavedChanges": "有未保存的更改",
+		"play": "播放",
+		"stop": "停止",
+		"export": "导出"
+	},
+	"sidebar": {
+		"background": "背景",
+		"settings": "设置",
+		"sound": "声音",
+		"export": "导出",
+		"aspectRatio": "画布比例",
+		"bgTab": {
+			"wallpaper": "壁纸",
+			"color": "纯色",
+			"gradient": "渐变"
+		},
+		"blurBg": "模糊背景",
+		"roundness": "圆角",
+		"padding": "内边距",
+		"shadow": "阴影",
+		"off": "关闭",
+		"clickSound": "鼠标点击声音",
+		"bgMusic": "背景音乐",
+		"bgMusicOn": "已选择",
+		"bgMusicOff": "未选择",
+		"bgMusicVolume": "音量",
+		"exportMp4": "导出为 MP4",
+		"exportMp4Desc": "生成 MP4 视频文件",
+		"exportPdf": "导出为 PDF",
+		"exportPdfDesc": "即将推出"
+	},
+	"stepPanel": {
+		"title": "步骤",
+		"importScreenshots": "导入截图",
+		"unusedScreenshots": "未使用的截图",
+		"addStep": "添加步骤",
+		"removeStep": "删除步骤",
+		"moveUp": "上移",
+		"moveDown": "下移",
+		"previewStep": "预览此步骤"
+	},
+	"timeline": {
+		"title": "时间轴",
+		"stepCount": "共 {{count}} 步",
+		"noImage": "无截图",
+		"stepLabel": "步骤 {{number}}",
+		"addStep": "添加步骤",
+		"importImages": "导入图片",
+		"addCursorAnnotation": "添加鼠标标注",
+		"addHighlightArea": "添加高亮区域",
+		"deleteStep": "删除此步骤"
+	},
+	"bottomBar": {
+		"undo": "撤销",
+		"redo": "重做",
+		"play": "播放",
+		"stepCount": "{{count}} 个步骤",
+		"duration": "{{seconds}} 秒"
+	},
+	"canvas": {
+		"noScreenshot": "此步骤没有截图",
+		"drawHotspotHint": "拖动鼠标绘制热点区域",
+		"clickToPlaceCursor": "点击画面放置鼠标位置标注",
+		"dragToDrawHighlight": "在画面上拖动绘制高亮区域",
+		"playing": "播放中",
+		"stopPlayback": "停止"
+	},
+	"toolbar": {
+		"cursorAnnotation": "鼠标标注",
+		"cursorAnnotationTitle": "点击画布放置鼠标位置标注，播放时会生成鼠标点击效果",
+		"highlightAnnotation": "高亮区域",
+		"highlightAnnotationTitle": "在画布上拖动选择一个矩形区域，播放时此区域将高亮显示",
+		"cancel": "取消"
+	},
+	"properties": {
+		"selectStepHint": "选择一个步骤进行编辑",
+		"stepSection": "步骤",
+		"title": "标题",
+		"description": "描述",
+		"cursorSection": "光标",
+		"cursorStyle": "样式",
+		"cursorStyleOptions": {
+			"default": "默认",
+			"hand": "手型",
+			"mac": "macOS",
+			"windows": "Windows",
+			"custom": "自定义"
+		},
+		"movementType": "移动类型",
+		"movementTypeOptions": {
+			"linear": "线性",
+			"easing": "缓动",
+			"bezier": "贝塞尔"
+		},
+		"duration": "持续时间（毫秒）",
+		"clickEffect": "点击效果",
+		"clickEffectOptions": {
+			"none": "无",
+			"ripple": "涟漪",
+			"zoom": "缩放",
+			"flash": "闪光"
+		},
+		"clickSound": "点击音效",
+		"clickSoundEnable": "启用",
+		"subtitleSection": "字幕",
+		"subtitleText": "文本",
+		"subtitlePlaceholder": "此步骤的字幕文本...",
+		"subtitlePosition": "位置",
+		"subtitlePositionOptions": {
+			"bottom": "底部",
+			"top": "顶部",
+			"center": "居中"
+		},
+		"fontSize": "字号",
+		"bold": "粗体",
+		"italic": "斜体",
+		"hotspotSection": "热点",
+		"label": "标签",
+		"labelPlaceholder": "为标注添加文字说明...",
+		"highlightStyle": "高亮样式",
+		"highlightStyleOptions": {
+			"border": "边框",
+			"background": "背景",
+			"pulse": "脉冲"
+		},
+		"highlightShape": "高亮形状",
+		"highlightShapeOptions": {
+			"rect": "矩形",
+			"circle": "圆形",
+			"ellipse": "椭圆"
+		},
+		"clickAnimation": "点击动画",
+		"jumpToStep": "跳转到步骤",
+		"jumpToStepPlaceholder": "步骤 ID 或留空",
+		"position": "位置",
+		"deleteHotspot": "删除热点",
+		"tooltipLabel": "浮动说明",
+		"tooltipPlaceholder": "播放时鼠标点击后显示的说明文字...",
+		"tooltipHint": "在播放时鼠标移动到该标注点并点击后，会显示此说明文字",
+		"highlightColor": "高亮颜色",
+		"highlightDuration": "显示时长",
+		"cursorMarkerTitle": "鼠标标注",
+		"highlightAreaTitle": "高亮区域",
+		"deleteMarker": "删除标注",
+		"deleteHighlight": "删除高亮",
+		"positionInfo": "位置",
+		"sizeInfo": "尺寸",
+		"elementList": "元素列表",
+		"noElements": "当前步骤暂无标注元素",
+		"transitionSection": "转场特效",
+		"transitionType": "转场类型",
+		"transitionDuration": "时长（毫秒）",
+		"transitionTypeOptions": {
+			"none": "无",
+			"fade": "淡入淡出",
+			"slide-left": "左滑",
+			"slide-right": "右滑",
+			"slide-up": "上滑",
+			"zoom": "缩放",
+			"dissolve": "溶解",
+			"wipe": "擦除"
+		}
+	},
+	"player": {
+		"play": "播放",
+		"pause": "暂停",
+		"exit": "退出",
+		"previous": "上一步",
+		"next": "下一步",
+		"stepCounter": "步骤 {{current}} / {{total}}",
+		"noScreenshot": "此步骤没有截图"
+	},
+	"playbackControls": {
+		"stepOf": "步骤 {{current}}/{{total}}",
+		"playAll": "播放全部",
+		"stopAll": "停止"
+	},
+	"export": {
+		"title": "导出教程",
+		"formatVideo": "MP4 视频（通过 Remotion）",
+		"formatGif": "动态 GIF",
+		"formatPdf": "PDF 手册",
+		"cancel": "取消",
+		"export": "导出",
+		"exporting": "正在导出...",
+		"resultSuccess": "导出完成：{{path}}",
+		"resultFailed": "导出失败：{{error}}",
+		"resultError": "导出错误：{{error}}"
+	}
+}

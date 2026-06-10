@@ -17,6 +17,7 @@ const ASSET_BASE_DIR = process.defaultApp
 const ASSET_BASE_URL_ARG = `--asset-base-url=${pathToFileURL(`${ASSET_BASE_DIR}${path.sep}`).toString()}`;
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let demoEditorWindow: BrowserWindow | null = null;
 
 ipcMain.on("hud-overlay-hide", () => {
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
@@ -319,4 +320,81 @@ export function createCountdownOverlayWindow(): BrowserWindow {
 	}
 
 	return win;
+}
+
+/**
+ * DemoBuilder editor window. Similar to the main editor: maximised, hidden
+ * title bar on macOS, not always-on-top, appears in the taskbar/dock.
+ * An optional projectId can be passed via the URL query to auto-load a project.
+ */
+export function createDemoEditorWindow(projectId?: string): BrowserWindow {
+	const isMac = process.platform === "darwin";
+
+	const query: Record<string, string> = { windowType: "demo-editor" };
+	if (projectId) {
+		query.projectId = projectId;
+	}
+
+	const win = new BrowserWindow({
+		width: 1200,
+		height: 800,
+		minWidth: 800,
+		minHeight: 600,
+		...(isMac && {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 12, y: 12 },
+		}),
+		transparent: false,
+		resizable: true,
+		alwaysOnTop: false,
+		skipTaskbar: false,
+		title: "DemoBuilder — OpenScreen",
+		backgroundColor: "#09090b",
+		show: false,
+		webPreferences: {
+			preload: path.join(__dirname, "preload.mjs"),
+			additionalArguments: [ASSET_BASE_URL_ARG],
+			nodeIntegration: false,
+			contextIsolation: true,
+			webSecurity: false,
+			backgroundThrottling: false,
+		},
+	});
+
+	win.maximize();
+
+	win.once("ready-to-show", () => {
+		if (!HEADLESS) win.show();
+	});
+
+	win.webContents.on("dom-ready", () => {
+		win.webContents.insertCSS("html, body, #root { background: #09090b !important; }").catch(() => {
+			// Best-effort cosmetic; ignore if the page is mid-teardown.
+		});
+	});
+
+	win.webContents.on("did-finish-load", () => {
+		win?.webContents.send("main-process-message", new Date().toLocaleString());
+	});
+
+	win.on("closed", () => {
+		if (demoEditorWindow === win) {
+			demoEditorWindow = null;
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		const searchParams = new URLSearchParams(query).toString();
+		win.loadURL(`${VITE_DEV_SERVER_URL}?${searchParams}`);
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), { query });
+	}
+
+	demoEditorWindow = win;
+	return win;
+}
+
+/** Return the current DemoBuilder editor window, if any. */
+export function getDemoEditorWindow(): BrowserWindow | null {
+	return demoEditorWindow && !demoEditorWindow.isDestroyed() ? demoEditorWindow : null;
 }
