@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import cursorCrossUrl from "@/assets/cursors/Cursor=Cross.svg";
+// 光标样式 SVG 图片（复用视频编辑器的光标资源）
+import cursorDefaultUrl from "@/assets/cursors/Cursor=Default.svg";
+import cursorOpenHandUrl from "@/assets/cursors/Cursor=Hand-(Open).svg";
+import cursorHandUrl from "@/assets/cursors/Cursor=Hand-(Pointing).svg";
+import cursorTextUrl from "@/assets/cursors/Cursor=Text-Cursor.svg";
 import { useScopedT } from "@/contexts/I18nContext";
 import type {
+	CursorStyle,
 	DemoAppearance,
 	DemoBackground,
 	Hotspot,
@@ -11,6 +18,18 @@ import type {
 } from "@/lib/demobuilder/types";
 import { resolveImageWallpaperUrl } from "@/lib/wallpaper";
 
+/** 光标类型 → SVG 图片 URL 映射 */
+const CURSOR_IMAGE_MAP: Record<string, string> = {
+	default: cursorDefaultUrl,
+	hand: cursorHandUrl,
+	cross: cursorCrossUrl,
+	text: cursorTextUrl,
+	"open-hand": cursorOpenHandUrl,
+	mac: cursorDefaultUrl,
+	windows: cursorDefaultUrl,
+	custom: cursorDefaultUrl,
+};
+
 interface CanvasAreaProps {
 	screenshot: Screenshot | null;
 	step: Step | null;
@@ -19,6 +38,7 @@ interface CanvasAreaProps {
 	appearance: DemoAppearance;
 	canvasWidth: number;
 	canvasHeight: number;
+	cursorType?: CursorStyle;
 	onSelectHotspot: (hotspotId: string | null) => void;
 	onAddHotspot: (hotspot: Hotspot) => void;
 	onUpdateHotspot: (hotspotId: string, updates: Partial<Hotspot>) => void;
@@ -65,6 +85,47 @@ const TRANSITION_MS = 500;
 const HIGHLIGHT_FADE_MS = 400;
 const DEFAULT_HIGHLIGHT_DURATION_MS = 1000;
 
+// 点击音效：将音频文件放在 public/sounds/click.mp3
+const CLICK_SOUND_URL = "/sounds/click.mp3";
+let clickAudio: HTMLAudioElement | null = null;
+try {
+	clickAudio = new Audio(CLICK_SOUND_URL);
+	clickAudio.preload = "auto";
+	clickAudio.volume = 0.5;
+} catch {
+	// 环境不支持 Audio
+}
+
+/** 播放点击音效，失败时回退为合成音效 */
+function playClickSound() {
+	if (clickAudio) {
+		try {
+			clickAudio.currentTime = 0;
+			clickAudio.play();
+			return;
+		} catch {
+			// 音频文件不存在或加载失败，回退为合成音
+		}
+	}
+	// 回退：Web Audio API 合成音效
+	try {
+		const ctx = new AudioContext();
+		const osc = ctx.createOscillator();
+		const gain = ctx.createGain();
+		osc.connect(gain);
+		gain.connect(ctx.destination);
+		osc.type = "sine";
+		osc.frequency.setValueAtTime(800, ctx.currentTime);
+		osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.08);
+		gain.gain.setValueAtTime(0.15, ctx.currentTime);
+		gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+		osc.start(ctx.currentTime);
+		osc.stop(ctx.currentTime + 0.08);
+	} catch {
+		// AudioContext not available
+	}
+}
+
 // ─── 播放状态接口 ───────────────────────────────────────────────────────────
 interface PlaybackState {
 	cursorPos: Point | null;
@@ -93,6 +154,7 @@ function CanvasAreaInner({
 	appearance,
 	canvasWidth,
 	canvasHeight,
+	cursorType,
 	onSelectHotspot,
 	onAddHotspot,
 	onUpdateHotspot,
@@ -351,10 +413,14 @@ function CanvasAreaInner({
 
 		let delay = INITIAL_DELAY_MS;
 
-		// Show all highlight areas with a slight stagger
+		// 串行显示高亮区域：前一个消失后才显示下一个
 		const highlightAreas = hotspots.filter((h) => !isCursorMarker(h));
-		highlightAreas.forEach((h, i) => {
-			const appearTime = delay + i * HIGHLIGHT_FADE_MS;
+		let highlightDelay = delay;
+		highlightAreas.forEach((h) => {
+			const duration = h.highlightDuration ?? DEFAULT_HIGHLIGHT_DURATION_MS;
+			const appearTime = highlightDelay;
+
+			// 高亮淡入显示
 			schedule(
 				() =>
 					setPlayback((p) => ({
@@ -364,8 +430,7 @@ function CanvasAreaInner({
 				appearTime,
 			);
 
-			// 高亮显示指定时长后自动消失
-			const duration = h.highlightDuration ?? DEFAULT_HIGHLIGHT_DURATION_MS;
+			// 显示指定时长后淡出消失
 			schedule(
 				() =>
 					setPlayback((p) => {
@@ -375,13 +440,12 @@ function CanvasAreaInner({
 					}),
 				appearTime + HIGHLIGHT_FADE_MS + duration,
 			);
+
+			// 下一个高亮在上一个淡出完成后才开始
+			highlightDelay += HIGHLIGHT_FADE_MS + duration + HIGHLIGHT_FADE_MS;
 		});
 		if (highlightAreas.length > 0) {
-			// 等待所有高亮显示完毕后开始后续动作
-			const maxDuration = Math.max(
-				...highlightAreas.map((h) => h.highlightDuration ?? DEFAULT_HIGHLIGHT_DURATION_MS),
-			);
-			delay += highlightAreas.length * HIGHLIGHT_FADE_MS + maxDuration + HIGHLIGHT_FADE_MS + 300;
+			delay = highlightDelay + 300;
 		}
 
 		// Animate cursor through each cursor marker in sequence
@@ -409,32 +473,15 @@ function CanvasAreaInner({
 				}, delay);
 				delay += CURSOR_MOVE_MS;
 
-				// 点击效果
+				// 点击效果 + 音效
 				schedule(() => {
 					setPlayback((p) => ({
 						...p,
 						phase: "clicking",
 						clickingId: marker.id,
-						// 如果该热点有浮动说明，同步显示
 						tooltipId: marker.tooltip ? marker.id : p.tooltipId,
 					}));
-					// Play click sound
-					try {
-						const ctx = new AudioContext();
-						const osc = ctx.createOscillator();
-						const gain = ctx.createGain();
-						osc.connect(gain);
-						gain.connect(ctx.destination);
-						osc.type = "sine";
-						osc.frequency.setValueAtTime(800, ctx.currentTime);
-						osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.08);
-						gain.gain.setValueAtTime(0.15, ctx.currentTime);
-						gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-						osc.start(ctx.currentTime);
-						osc.stop(ctx.currentTime + 0.08);
-					} catch {
-						// AudioContext not available
-					}
+					playClickSound();
 				}, delay);
 				delay += CLICK_EFFECT_MS;
 
@@ -606,33 +653,30 @@ function CanvasAreaInner({
 											);
 										})}
 
-								{/* ── Playback: animated cursor ── */}
+								{/* ── 播放：动画光标 ── */}
 								{isPlaying && playback.cursorVisible && playback.cursorPos && (
 									<div
 										className="absolute pointer-events-none"
 										style={{
 											left: `${playback.cursorPos.x}%`,
 											top: `${playback.cursorPos.y}%`,
-											width: 28,
-											height: 28,
-											marginLeft: -14,
-											marginTop: -14,
+											width: 32,
+											height: 32,
+											marginLeft: -4,
+											marginTop: -2,
 											transition: `left ${CURSOR_MOVE_MS}ms cubic-bezier(0.4, 0, 0.2, 1), top ${CURSOR_MOVE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
 											zIndex: 50,
 										}}
 									>
-										<svg
-											width="24"
-											height="24"
-											viewBox="0 0 24 24"
-											fill="white"
+										<img
+											src={CURSOR_IMAGE_MAP[cursorType ?? "default"] ?? cursorDefaultUrl}
+											alt="cursor"
+											className="w-full h-full"
 											style={{
 												filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))",
 											}}
-										>
-											<title>Cursor</title>
-											<path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.85a.5.5 0 0 0-.85.36z" />
-										</svg>
+											draggable={false}
+										/>
 									</div>
 								)}
 
@@ -1023,27 +1067,40 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 		[onSelect, hotspot.x, hotspot.y],
 	);
 
-	const handleMouseMove = useCallback(
-		(e: React.MouseEvent) => {
-			if (!isDragging || !dragStartRef.current) return;
-			const parent = (e.target as HTMLElement).parentElement;
+	const handleDragMove = useCallback(
+		(clientX: number, clientY: number) => {
+			if (!dragStartRef.current) return;
+			const parent = document.querySelector("[data-canvas-image]");
 			if (!parent) return;
 			const rect = parent.getBoundingClientRect();
-			const deltaX = ((e.clientX - dragStartRef.current.mouseX) / rect.width) * 100;
-			const deltaY = ((e.clientY - dragStartRef.current.mouseY) / rect.height) * 100;
+			const deltaX = ((clientX - dragStartRef.current.mouseX) / rect.width) * 100;
+			const deltaY = ((clientY - dragStartRef.current.mouseY) / rect.height) * 100;
 			onDrag(
 				hotspot.id,
 				dragStartRef.current.hotspotX + deltaX,
 				dragStartRef.current.hotspotY + deltaY,
 			);
 		},
-		[isDragging, hotspot.id, onDrag],
+		[hotspot.id, onDrag],
 	);
 
 	const handleMouseUp = useCallback(() => {
 		setIsDragging(false);
 		dragStartRef.current = null;
 	}, []);
+
+	// 拖拽时绑定全局文档事件，避免鼠标离开元素后丢失事件
+	useEffect(() => {
+		if (!isDragging) return;
+		const onMouseMove = (e: MouseEvent) => handleDragMove(e.clientX, e.clientY);
+		const onMouseUp = () => handleMouseUp();
+		document.addEventListener("mousemove", onMouseMove);
+		document.addEventListener("mouseup", onMouseUp);
+		return () => {
+			document.removeEventListener("mousemove", onMouseMove);
+			document.removeEventListener("mouseup", onMouseUp);
+		};
+	}, [isDragging, handleDragMove, handleMouseUp]);
 
 	// 缩放拖拽处理器
 	const handleResizeMouseDown = useCallback(
@@ -1138,9 +1195,6 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 					zIndex: 20,
 				}}
 				onMouseDown={handleMouseDown}
-				onMouseMove={handleMouseMove}
-				onMouseUp={handleMouseUp}
-				onMouseLeave={handleMouseUp}
 			>
 				<div
 					className="absolute inset-0 rounded-full"
@@ -1183,9 +1237,6 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 				zIndex: isSelected ? 25 : 20,
 			}}
 			onMouseDown={handleMouseDown}
-			onMouseMove={handleMouseMove}
-			onMouseUp={handleMouseUp}
-			onMouseLeave={handleMouseUp}
 		>
 			{/* 半透明遮罩层：区域内透明，区域外遮罩 */}
 			<svg

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import {
+	type CursorStyle,
 	DEFAULT_CURSOR_ANIMATION,
 	DEFAULT_PROJECT_SETTINGS,
 	DEFAULT_TRANSITION,
@@ -416,6 +417,12 @@ export function DemoEditor() {
 		[],
 	);
 
+	const handleUpdateCursorType = useCallback(
+		(cursorType: CursorStyle) =>
+			dispatch({ type: "UPDATE_SETTINGS", settings: { defaultCursorType: cursorType } }),
+		[],
+	);
+
 	const handleExport = useCallback((format: "mp4" | "pdf") => {
 		if (format === "mp4") setShowExport(true);
 	}, []);
@@ -518,6 +525,7 @@ export function DemoEditor() {
 					onUpdateAppearance={handleUpdateAppearance}
 					onUpdateSound={handleUpdateSound}
 					onUpdateAspectRatio={handleUpdateAspectRatio}
+					onUpdateCursorType={handleUpdateCursorType}
 					onExport={handleExport}
 				/>
 
@@ -543,6 +551,7 @@ export function DemoEditor() {
 									appearance={settings.appearance}
 									canvasWidth={canvasWidth}
 									canvasHeight={canvasHeight}
+									cursorType={settings.defaultCursorType}
 									onSelectHotspot={handleSelectHotspot}
 									onAddHotspot={handleAddHotspot}
 									onUpdateHotspot={handleUpdateHotspot}

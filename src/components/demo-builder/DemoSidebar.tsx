@@ -1,9 +1,16 @@
 import { Download, Palette, SlidersHorizontal, Volume2 } from "lucide-react";
 import { type ComponentType, useCallback, useMemo, useState } from "react";
+import cursorCrossUrl from "@/assets/cursors/Cursor=Cross.svg";
+// 鼠标样式预设：复用视频编辑器的光标 SVG 图片
+import cursorDefaultUrl from "@/assets/cursors/Cursor=Default.svg";
+import cursorOpenHandUrl from "@/assets/cursors/Cursor=Hand-(Open).svg";
+import cursorHandUrl from "@/assets/cursors/Cursor=Hand-(Pointing).svg";
+import cursorTextUrl from "@/assets/cursors/Cursor=Text-Cursor.svg";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
 import type {
+	CursorStyle,
 	DemoAppearance,
 	DemoBackground,
 	DemoSound,
@@ -11,6 +18,14 @@ import type {
 } from "@/lib/demobuilder/types";
 import { cn } from "@/lib/utils";
 import { resolveImageWallpaperUrl, WALLPAPER_PATHS } from "@/lib/wallpaper";
+
+const CURSOR_OPTIONS: { id: CursorStyle; icon: string; labelKey: string }[] = [
+	{ id: "default", icon: cursorDefaultUrl, labelKey: "sidebar.cursorStyle.default" },
+	{ id: "hand", icon: cursorHandUrl, labelKey: "sidebar.cursorStyle.hand" },
+	{ id: "cross", icon: cursorCrossUrl, labelKey: "sidebar.cursorStyle.cross" },
+	{ id: "text", icon: cursorTextUrl, labelKey: "sidebar.cursorStyle.text" },
+	{ id: "open-hand", icon: cursorOpenHandUrl, labelKey: "sidebar.cursorStyle.openHand" },
+];
 
 type SidebarMode = "background" | "settings" | "sound" | "export";
 
@@ -20,6 +35,7 @@ interface DemoSidebarProps {
 	onUpdateAppearance: (appearance: Partial<DemoAppearance>) => void;
 	onUpdateSound: (sound: Partial<DemoSound>) => void;
 	onUpdateAspectRatio: (ratio: string) => void;
+	onUpdateCursorType: (cursorType: CursorStyle) => void;
 	onExport: (format: "mp4" | "pdf") => void;
 }
 
@@ -86,6 +102,7 @@ export function DemoSidebar({
 	onUpdateAppearance,
 	onUpdateSound,
 	onUpdateAspectRatio,
+	onUpdateCursorType,
 	onExport,
 }: DemoSidebarProps) {
 	const t = useScopedT("demobuilder");
@@ -134,7 +151,11 @@ export function DemoSidebar({
 					/>
 				)}
 				{mode === "settings" && (
-					<SettingsPanel settings={settings} onUpdateAppearance={onUpdateAppearance} />
+					<SettingsPanel
+						settings={settings}
+						onUpdateAppearance={onUpdateAppearance}
+						onUpdateCursorType={onUpdateCursorType}
+					/>
 				)}
 				{mode === "sound" && <SoundPanel settings={settings} onUpdateSound={onUpdateSound} />}
 				{mode === "export" && <ExportPanel onExport={onExport} />}
@@ -284,12 +305,15 @@ function BackgroundPanel({
 function SettingsPanel({
 	settings,
 	onUpdateAppearance,
+	onUpdateCursorType,
 }: {
 	settings: ProjectSettings;
 	onUpdateAppearance: (appearance: Partial<DemoAppearance>) => void;
+	onUpdateCursorType: (cursorType: CursorStyle) => void;
 }) {
 	const t = useScopedT("demobuilder");
 	const { appearance } = settings;
+	const currentCursor = settings.defaultCursorType ?? "default";
 
 	return (
 		<div className="px-1 space-y-2">
@@ -357,6 +381,43 @@ function SettingsPanel({
 					step={0.01}
 					className="w-full"
 				/>
+			</div>
+
+			{/* 鼠标样式选择 */}
+			<div className="p-2 rounded-lg editor-control-surface">
+				<div className="text-[10px] font-medium text-slate-300 mb-2">
+					{t("sidebar.cursorStyleTitle")}
+				</div>
+				<div className="grid grid-cols-5 gap-1.5">
+					{CURSOR_OPTIONS.map((opt) => {
+						const isSelected = currentCursor === opt.id;
+						return (
+							<button
+								key={opt.id}
+								type="button"
+								onClick={() => onUpdateCursorType(opt.id)}
+								className={cn(
+									"flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all duration-150",
+									isSelected
+										? "border-[#34B27B]/70 bg-[#34B27B]/15 text-[#34B27B]"
+										: "border-white/[0.06] bg-white/[0.035] text-slate-400 hover:bg-white/[0.075] hover:text-slate-200",
+								)}
+							>
+								<img
+									src={opt.icon}
+									alt=""
+									className="w-6 h-6 object-contain"
+									style={{
+										filter: isSelected
+											? "brightness(0) saturate(100%) invert(62%) sepia(46%) saturate(468%) hue-rotate(108deg)"
+											: "none",
+									}}
+								/>
+								<span className="text-[9px] font-semibold leading-tight">{t(opt.labelKey)}</span>
+							</button>
+						);
+					})}
+				</div>
 			</div>
 		</div>
 	);

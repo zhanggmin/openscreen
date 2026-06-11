@@ -303,40 +303,44 @@ export class DemoService {
 		this.context.openDemoEditorWindow(projectId);
 	}
 
+	/**
+	 * Server-side export for formats that require main-process resources (PDF, GIF).
+	 * Video (MP4) export is handled entirely in the renderer via DemoVideoExporter.
+	 */
 	async exportProject(
-		projectId: string,
+		_projectId: string,
 		format: "video" | "gif" | "pdf",
 	): Promise<{ success: boolean; filePath?: string; error?: string }> {
 		try {
-			const projectDir = getProjectDir(projectId);
-			const projectFile = path.join(projectDir, "project.json");
-			const raw = await fs.readFile(projectFile, "utf-8");
-			const _project = JSON.parse(raw) as DemoProject;
+			if (format === "video") {
+				// Video export is handled in the renderer process (DemoVideoExporter).
+				// This handler should not be called for video format.
+				return {
+					success: false,
+					error: "Video export is handled client-side via DemoVideoExporter.",
+				};
+			}
 
 			if (format === "pdf") {
 				// PDF export placeholder — would generate a PDF manual from project data
-				// TODO: Generate PDF at path.join(projectDir, `${project.name}.pdf`)
-				// using a PDF generation library (e.g. pdfkit, puppeteer)
+				// TODO: Generate PDF using a PDF generation library (e.g. pdfkit, puppeteer)
 				return {
 					success: false,
-					error:
-						"PDF export not yet implemented. Install a PDF generation library to enable this feature.",
+					error: "PDF export not yet implemented.",
 				};
 			}
 
 			if (format === "gif") {
-				// GIF export placeholder
+				// GIF export placeholder — will reuse GifExporter from src/lib/exporter/
 				return {
 					success: false,
 					error: "GIF export not yet implemented.",
 				};
 			}
 
-			// Video export via Remotion
 			return {
 				success: false,
-				error:
-					"Video export requires Remotion. Run: npm install remotion @remotion/cli @remotion/renderer",
+				error: `Unsupported export format: ${format}`,
 			};
 		} catch (error) {
 			return {

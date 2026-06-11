@@ -30,6 +30,14 @@
 		"padding": "内边距",
 		"shadow": "阴影",
 		"off": "关闭",
+		"cursorStyleTitle": "鼠标样式",
+		"cursorStyle": {
+			"default": "默认",
+			"hand": "手指",
+			"cross": "十字",
+			"text": "文本",
+			"openHand": "张开"
+		},
 		"clickSound": "鼠标点击声音",
 		"bgMusic": "背景音乐",
 		"bgMusicOn": "已选择",
@@ -188,7 +196,7 @@
 	},
 	"export": {
 		"title": "导出教程",
-		"formatVideo": "MP4 视频（通过 Remotion）",
+		"formatVideo": "MP4 视频",
 		"formatGif": "动态 GIF",
 		"formatPdf": "PDF 手册",
 		"cancel": "取消",

@@ -30,6 +30,14 @@
 		"padding": "Padding",
 		"shadow": "Shadow",
 		"off": "Off",
+		"cursorStyleTitle": "Cursor Style",
+		"cursorStyle": {
+			"default": "Default",
+			"hand": "Hand",
+			"cross": "Cross",
+			"text": "Text",
+			"openHand": "Open"
+		},
 		"clickSound": "Mouse Click Sound",
 		"bgMusic": "Background Music",
 		"bgMusicOn": "Selected",
@@ -188,7 +196,7 @@
 	},
 	"export": {
 		"title": "Export Tutorial",
-		"formatVideo": "MP4 Video (via Remotion)",
+		"formatVideo": "MP4 Video",
 		"formatGif": "Animated GIF",
 		"formatPdf": "PDF Manual",
 		"cancel": "Cancel",

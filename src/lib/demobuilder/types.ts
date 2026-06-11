@@ -3,8 +3,8 @@
  *
  * All demo project content is stored as a unified JSON structure (DemoProject).
  * Every output (interactive tutorial, PDF, MP4) is generated from this single
- * source of truth.  Remotion is only involved at preview/render time — the
- * Editor owns all editing capabilities.
+ * source of truth.  The Editor owns all editing capabilities; video export is
+ * handled by DemoVideoExporter (PixiJS + WebCodecs pipeline).
  *
  * Coordinate system: positions and sizes are stored as percentages (0–100)
  * relative to the screenshot dimensions, making them resolution-independent.
@@ -84,7 +84,15 @@ export interface Hotspot {
 
 // ─── Cursor Animation ─────────────────────────────────────────────────────────
 
-export type CursorStyle = "default" | "hand" | "mac" | "windows" | "custom";
+export type CursorStyle =
+	| "default"
+	| "hand"
+	| "mac"
+	| "windows"
+	| "custom"
+	| "cross"
+	| "text"
+	| "open-hand";
 
 export type MovementType = "linear" | "easing" | "bezier";
 
