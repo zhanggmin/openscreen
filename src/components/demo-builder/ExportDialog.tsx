@@ -1,12 +1,6 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import {
-	DemoVideoExporter,
-	resolutionToBitrate,
-	resolutionToSize,
-} from "@/lib/demobuilder/demoVideoExporter";
 import type { DemoProject } from "@/lib/demobuilder/types";
-import type { ExportProgress } from "@/lib/exporter/types";
 import { nativeBridgeClient } from "@/native/client";
 
 interface ExportDialogProps {
@@ -17,7 +11,7 @@ interface ExportDialogProps {
 type ExportFormat = "video" | "gif" | "pdf";
 type ExportStatus =
 	| { type: "idle" }
-	| { type: "exporting"; progress: ExportProgress }
+	| { type: "exporting"; progress: number; currentFrame: number; totalFrames: number }
 	| { type: "success"; path: string }
 	| { type: "error"; message: string };
 
@@ -25,17 +19,13 @@ export function ExportDialog({ project, onClose }: ExportDialogProps) {
 	const t = useScopedT("demobuilder");
 	const [format, setFormat] = useState<ExportFormat>("video");
 	const [status, setStatus] = useState<ExportStatus>({ type: "idle" });
-	const exporterRef = useRef<DemoVideoExporter | null>(null);
 
 	const isExporting = status.type === "exporting";
 
 	async function handleExport() {
 		if (format === "pdf" || format === "gif") {
 			// PDF/GIF: delegated to main process (placeholder)
-			setStatus({
-				type: "exporting",
-				progress: { currentFrame: 0, totalFrames: 1, percentage: 0, estimatedTimeRemaining: 0 },
-			});
+			setStatus({ type: "exporting", progress: 0, currentFrame: 0, totalFrames: 1 });
 			try {
 				const res = await nativeBridgeClient.demo.exportProject(project.id, format);
 				if (res.success && res.filePath) {
@@ -49,57 +39,27 @@ export function ExportDialog({ project, onClose }: ExportDialogProps) {
 			return;
 		}
 
-		// Video export: run in renderer via DemoVideoExporter
-		const resolution = project.settings.exportSettings.videoResolution;
-		const { width, height } = resolutionToSize(resolution);
-		const fps = project.settings.exportSettings.videoFps;
-		const bitrate = resolutionToBitrate(resolution);
+		setStatus({ type: "exporting", progress: 0, currentFrame: 0, totalFrames: 1 });
 
-		// Show save dialog first
-		const fileName = `${project.name || "demo"}.mp4`;
-		const pickResult = await window.electronAPI?.pickExportSavePath(fileName);
-		if (!pickResult?.success || !pickResult.path) return; // User cancelled
-		const savePath = pickResult.path;
-
-		setStatus({
-			type: "exporting",
-			progress: { currentFrame: 0, totalFrames: 1, percentage: 0, estimatedTimeRemaining: 0 },
-		});
-
-		const exporter = new DemoVideoExporter({
-			project,
-			width,
-			height,
-			frameRate: fps,
-			bitrate,
-			onProgress: (progress) => {
-				setStatus({ type: "exporting", progress });
-			},
-		});
-		exporterRef.current = exporter;
-
+		// Delegate video export to main process via IPC
 		try {
-			const result = await exporter.export();
-			if (result.success && result.blob) {
-				const arrayBuffer = await result.blob.arrayBuffer();
-				await window.electronAPI?.writeExportToPath(arrayBuffer, savePath);
-				setStatus({ type: "success", path: savePath });
+			const result = await nativeBridgeClient.demo.exportProject(project.id, format);
+			if (result.success && result.filePath) {
+				setStatus({ type: "success", path: result.filePath });
 			} else {
 				setStatus({ type: "error", message: result.error ?? "Export failed" });
 			}
 		} catch (err) {
 			setStatus({ type: "error", message: err instanceof Error ? err.message : String(err) });
-		} finally {
-			exporterRef.current = null;
 		}
 	}
 
 	function handleCancel() {
-		if (exporterRef.current) {
-			exporterRef.current.cancel();
-			exporterRef.current = null;
-		}
 		setStatus({ type: "idle" });
+	}
+
+	function handleOpenFolder(filePath: string) {
+		window.electronAPI?.revealInFolder(filePath);
 	}
 
 	return (
@@ -152,22 +112,19 @@ export function ExportDialog({ project, onClose }: ExportDialogProps) {
 						<div className="flex items-center justify-between mb-1">
 							<span className="text-[11px] text-zinc-400">{t("export.exporting")}</span>
 							<span className="text-[11px] font-mono text-zinc-500">
-								{Math.round(status.progress.percentage)}%
+								{Math.round(status.progress * 100)}%
 							</span>
 						</div>
 						<div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
 							<div
 								className="h-full bg-[#34B27B] transition-all duration-200"
-								style={{ width: `${status.progress.percentage}%` }}
+								style={{ width: `${status.progress * 100}%` }}
 							/>
 						</div>
 						<div className="flex justify-between mt-1">
 							<span className="text-[10px] text-zinc-600">
-								{status.progress.currentFrame} / {status.progress.totalFrames} frames
+								{status.currentFrame} / {status.totalFrames} frames
 							</span>
-							{status.progress.phase && (
-								<span className="text-[10px] text-zinc-600">{status.progress.phase}</span>
-							)}
 						</div>
 					</div>
 				)}
@@ -196,6 +153,23 @@ export function ExportDialog({ project, onClose }: ExportDialogProps) {
 						>
 							{t("export.cancel")}
 						</button>
+					) : status.type === "success" ? (
+						<>
+							<button
+								type="button"
+								onClick={onClose}
+								className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+							>
+								{t("export.cancel")}
+							</button>
+							<button
+								type="button"
+								onClick={() => handleOpenFolder(status.path)}
+								className="px-3 py-1.5 text-xs font-medium bg-[#34B27B] text-white rounded hover:bg-[#2a8f63] transition-colors"
+							>
+								{t("export.openFolder")}
+							</button>
+						</>
 					) : (
 						<>
 							<button

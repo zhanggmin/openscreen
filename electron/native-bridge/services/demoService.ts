@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog } from "electron";
+import { exportDemoVideo } from "../../../src/lib/demobuilder/remotionExporter";
 import {
 	DEFAULT_PROJECT_SETTINGS,
 	DEMO_PROJECT_VERSION,
@@ -305,20 +306,69 @@ export class DemoService {
 
 	/**
 	 * Server-side export for formats that require main-process resources (PDF, GIF).
-	 * Video (MP4) export is handled entirely in the renderer via DemoVideoExporter.
+	 * Video (MP4) export is handled via Remotion rendering in the main process.
 	 */
 	async exportProject(
-		_projectId: string,
+		projectId: string,
 		format: "video" | "gif" | "pdf",
 	): Promise<{ success: boolean; filePath?: string; error?: string }> {
 		try {
 			if (format === "video") {
-				// Video export is handled in the renderer process (DemoVideoExporter).
-				// This handler should not be called for video format.
-				return {
-					success: false,
-					error: "Video export is handled client-side via DemoVideoExporter.",
-				};
+				// Load project from disk
+				const content = await fs.readFile(getProjectFilePath(projectId), "utf-8");
+				const project: DemoProject = JSON.parse(content);
+
+				// Convert screenshots to data URLs (Remotion headless Chrome can't load file:// URLs)
+				const screenshotUrls: Record<string, string> = {};
+				for (const screenshot of project.screenshots) {
+					try {
+						const filePath = screenshot.url.replace(/^file:\/\/\/?/, "");
+						const buffer = await fs.readFile(filePath);
+						const ext = path.extname(filePath).slice(1).toLowerCase();
+						const mime = ext === "jpg" ? "jpeg" : ext || "png";
+						screenshotUrls[screenshot.id] =
+							`data:image/${mime};base64,${buffer.toString("base64")}`;
+					} catch {
+						screenshotUrls[screenshot.id] = screenshot.url;
+					}
+				}
+
+				// Convert wallpaper background to data URL if applicable
+				if (project.settings.background?.type === "wallpaper") {
+					const wpPath = project.settings.background.value;
+					try {
+						const resolvedPath = path.join(app.getAppPath(), "public", wpPath.replace(/^\//, ""));
+						const buffer = await fs.readFile(resolvedPath);
+						const ext = path.extname(resolvedPath).slice(1).toLowerCase();
+						const mime = ext === "jpg" ? "jpeg" : ext || "png";
+						project.settings.background = {
+							type: "wallpaper",
+							value: `data:image/${mime};base64,${buffer.toString("base64")}`,
+						};
+					} catch {
+						// wallpaper file not found, keep original path
+					}
+				}
+
+				// Ask user for save path
+				const win = this.context.getDemoEditorWindow() ?? BrowserWindow.getFocusedWindow();
+				const defaultName = `${project.name || "demo"}.mp4`;
+				const saveResult = await dialog.showSaveDialog(win!, {
+					title: "Export Demo Video",
+					defaultPath: defaultName,
+					filters: [{ name: "MP4 Video", extensions: ["mp4"] }],
+				});
+				if (saveResult.canceled || !saveResult.filePath) {
+					return { success: false, error: "Export cancelled." };
+				}
+
+				await exportDemoVideo({
+					project,
+					screenshotUrls,
+					outputPath: saveResult.filePath,
+				});
+
+				return { success: true, filePath: saveResult.filePath };
 			}
 
 			if (format === "pdf") {

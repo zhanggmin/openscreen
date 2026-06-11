@@ -1464,6 +1464,10 @@ export function registerIpcHandlers(
 		createEditorWindow();
 	});
 
+	ipcMain.handle("open-demo-dashboard", () => {
+		createDemoEditorWindow();
+	});
+
 	ipcMain.handle("switch-to-hud", () => {
 		_switchToHud?.();
 		return { success: true };

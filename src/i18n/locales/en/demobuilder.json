@@ -31,6 +31,8 @@
 		"shadow": "Shadow",
 		"off": "Off",
 		"cursorStyleTitle": "Cursor Style",
+		"cursorThemeTitle": "Cursor Theme",
+		"cursorThemeHint": "When a theme is selected, the arrow cursor is shown while moving and the pointer cursor while clicking",
 		"cursorStyle": {
 			"default": "Default",
 			"hand": "Hand",
@@ -81,6 +83,7 @@
 		"drawHotspotHint": "Drag to draw a hotspot area",
 		"clickToPlaceCursor": "Click on the image to place a cursor marker",
 		"dragToDrawHighlight": "Drag on the image to draw a highlight area",
+		"dragToDrawZoomRegion": "Drag on the image to draw a zoom region",
 		"playing": "Playing",
 		"stopPlayback": "Stop"
 	},
@@ -89,6 +92,8 @@
 		"cursorAnnotationTitle": "Click on canvas to place a cursor position marker. During playback, a click animation will be shown.",
 		"highlightAnnotation": "Highlight Area",
 		"highlightAnnotationTitle": "Drag on canvas to select a rectangular area that will be highlighted during playback.",
+		"zoomAnnotation": "Zoom Region",
+		"zoomAnnotationTitle": "Drag on canvas to select an area that will be zoomed in during playback.",
 		"cancel": "Cancel"
 	},
 	"properties": {
@@ -162,6 +167,9 @@
 		"highlightAreaTitle": "Highlight Area",
 		"deleteMarker": "Delete Marker",
 		"deleteHighlight": "Delete Highlight",
+		"deleteZoomRegion": "Delete Zoom Region",
+		"zoomRegionTitle": "Zoom Region",
+		"zoomScale": "Zoom Scale",
 		"positionInfo": "Position",
 		"sizeInfo": "Size",
 		"elementList": "Elements",
@@ -204,6 +212,7 @@
 		"exporting": "Exporting...",
 		"resultSuccess": "Exported to: {{path}}",
 		"resultFailed": "Export failed: {{error}}",
-		"resultError": "Export error: {{error}}"
+		"resultError": "Export error: {{error}}",
+		"openFolder": "Open Folder"
 	}
 }

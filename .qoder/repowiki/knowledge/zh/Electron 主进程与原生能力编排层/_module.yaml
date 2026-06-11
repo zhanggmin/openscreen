@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: electron_main
+title: Electron 主进程与原生能力编排层
+scope:
+    - electron/
+source_files: []
+depends_on: []
+related_to:
+    - path: renderer_app
+    - path: docs

@@ -1,34 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import cursorCrossUrl from "@/assets/cursors/Cursor=Cross.svg";
-// 光标样式 SVG 图片（复用视频编辑器的光标资源）
-import cursorDefaultUrl from "@/assets/cursors/Cursor=Default.svg";
-import cursorOpenHandUrl from "@/assets/cursors/Cursor=Hand-(Open).svg";
-import cursorHandUrl from "@/assets/cursors/Cursor=Hand-(Pointing).svg";
-import cursorTextUrl from "@/assets/cursors/Cursor=Text-Cursor.svg";
 import { useScopedT } from "@/contexts/I18nContext";
+import type { DemoFrameState } from "@/lib/demobuilder/demoPlaybackEngine";
+import { computeFrameState, computeTotalDurationMs } from "@/lib/demobuilder/demoPlaybackEngine";
 import type {
 	CursorStyle,
 	DemoAppearance,
 	DemoBackground,
+	DemoProject,
 	Hotspot,
-	Point,
 	Screenshot,
 	Step,
-	TransitionType,
 } from "@/lib/demobuilder/types";
+import { isCursorMarker, isZoomRegion, ZOOM_LEVEL_SCALES } from "@/lib/demobuilder/types";
 import { resolveImageWallpaperUrl } from "@/lib/wallpaper";
-
-/** 光标类型 → SVG 图片 URL 映射 */
-const CURSOR_IMAGE_MAP: Record<string, string> = {
-	default: cursorDefaultUrl,
-	hand: cursorHandUrl,
-	cross: cursorCrossUrl,
-	text: cursorTextUrl,
-	"open-hand": cursorOpenHandUrl,
-	mac: cursorDefaultUrl,
-	windows: cursorDefaultUrl,
-	custom: cursorDefaultUrl,
-};
+import { DemoFrameView } from "./DemoFrameView";
 
 interface CanvasAreaProps {
 	screenshot: Screenshot | null;
@@ -39,12 +24,15 @@ interface CanvasAreaProps {
 	canvasWidth: number;
 	canvasHeight: number;
 	cursorType?: CursorStyle;
+	cursorTheme?: string;
 	onSelectHotspot: (hotspotId: string | null) => void;
 	onAddHotspot: (hotspot: Hotspot) => void;
 	onUpdateHotspot: (hotspotId: string, updates: Partial<Hotspot>) => void;
-	annotationMode: "cursor" | "highlight" | null;
-	onSetAnnotationMode: (mode: "cursor" | "highlight" | null) => void;
+	annotationMode: "cursor" | "highlight" | "zoom" | null;
+	onSetAnnotationMode: (mode: "cursor" | "highlight" | "zoom" | null) => void;
 	onAddCursorMarker: (position: { x: number; y: number }) => void;
+	/** Full project data (needed for computeFrameState during playback). */
+	project: DemoProject;
 	/** Whether inline playback is currently active. */
 	isPlaying: boolean;
 	/** Called when the current step's playback sequence finishes. */
@@ -68,22 +56,6 @@ function getBackgroundStyle(bg: DemoBackground): React.CSSProperties {
 	}
 	return { backgroundColor: bg.value };
 }
-
-/** Check if a hotspot is a cursor marker (small dot placed by cursor annotation tool). */
-function isCursorMarker(hotspot: Hotspot): boolean {
-	return hotspot.width <= 3 && hotspot.height <= 3 && hotspot.clickAnimation !== "none";
-}
-
-// ─── Playback timing constants ────────────────────────────────────────────────
-const CURSOR_MOVE_MS = 800;
-const CLICK_EFFECT_MS = 250;
-const HOLD_AFTER_CLICK_MS = 700;
-const HOLD_BETWEEN_MS = 200;
-const INITIAL_DELAY_MS = 400;
-const FINAL_HOLD_MS = 600;
-const TRANSITION_MS = 500;
-const HIGHLIGHT_FADE_MS = 400;
-const DEFAULT_HIGHLIGHT_DURATION_MS = 1000;
 
 // 点击音效：将音频文件放在 public/sounds/click.mp3
 const CLICK_SOUND_URL = "/sounds/click.mp3";
@@ -126,26 +98,6 @@ function playClickSound() {
 	}
 }
 
-// ─── 播放状态接口 ───────────────────────────────────────────────────────────
-interface PlaybackState {
-	cursorPos: Point | null;
-	cursorVisible: boolean;
-	clickingId: string | null;
-	highlightedIds: Set<string>;
-	/** 当前显示浮动说明的热点 ID */
-	tooltipId: string | null;
-	phase: "idle" | "moving" | "clicking" | "holding" | "transitioning";
-}
-
-const IDLE_PLAYBACK: PlaybackState = {
-	cursorPos: null,
-	cursorVisible: false,
-	clickingId: null,
-	highlightedIds: new Set(),
-	tooltipId: null,
-	phase: "idle",
-};
-
 function CanvasAreaInner({
 	screenshot,
 	step,
@@ -155,12 +107,14 @@ function CanvasAreaInner({
 	canvasWidth,
 	canvasHeight,
 	cursorType,
+	cursorTheme,
 	onSelectHotspot,
 	onAddHotspot,
 	onUpdateHotspot,
 	annotationMode,
 	onSetAnnotationMode,
 	onAddCursorMarker,
+	project,
 	isPlaying,
 	onStepPlaybackDone,
 	onStopPlayback,
@@ -168,8 +122,6 @@ function CanvasAreaInner({
 	const t = useScopedT("demobuilder");
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const screenshotRef = useRef<HTMLDivElement>(null);
-	/** 播放时跟踪上一张截图，用于转场动画双层渲染 */
-	const prevScreenshotUrlRef = useRef<string | null>(null);
 	const [isDrawing, setIsDrawing] = useState(false);
 	const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
 	const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
@@ -269,6 +221,13 @@ function CanvasAreaInner({
 				return;
 			}
 
+			if (annotationMode === "zoom") {
+				setIsDrawing(true);
+				setDrawStart(toPercent(e.clientX, e.clientY));
+				setDrawCurrent(toPercent(e.clientX, e.clientY));
+				return;
+			}
+
 			if (!target.dataset.hotspotId) {
 				onSelectHotspot(null);
 			}
@@ -278,7 +237,8 @@ function CanvasAreaInner({
 
 	const handleMouseMove = useCallback(
 		(e: React.MouseEvent) => {
-			if (isPlaying || !isDrawing || annotationMode !== "highlight") return;
+			if (isPlaying || !isDrawing) return;
+			if (annotationMode !== "highlight" && annotationMode !== "zoom") return;
 			setDrawCurrent(toPercent(e.clientX, e.clientY));
 		},
 		[isPlaying, isDrawing, annotationMode, toPercent],
@@ -291,7 +251,7 @@ function CanvasAreaInner({
 			!drawStart ||
 			!drawCurrent ||
 			!step ||
-			annotationMode !== "highlight"
+			(annotationMode !== "highlight" && annotationMode !== "zoom")
 		) {
 			setIsDrawing(false);
 			setDrawStart(null);
@@ -318,6 +278,7 @@ function CanvasAreaInner({
 				mouseTarget: null,
 				jumpToStepId: null,
 				shape: "rect",
+				zoomLevel: annotationMode === "zoom" ? 3 : undefined,
 			};
 			onAddHotspot(hotspot);
 		}
@@ -343,34 +304,68 @@ function CanvasAreaInner({
 		[isPlaying, onUpdateHotspot],
 	);
 
-	// 播放时跟踪上一张截图 URL（用于转场动画）
-	useEffect(() => {
-		if (screenshot?.url) {
-			prevScreenshotUrlRef.current = screenshot.url;
+	// ── Screenshot URL map for DemoFrameView ──
+	const screenshotMap = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const s of project.screenshots) {
+			map.set(s.id, s.url);
 		}
-	}, [screenshot?.url]);
+		return map;
+	}, [project.screenshots]);
 
-	// ── Inline playback engine ────────────────────────────────────────────────
-	const [playback, setPlayback] = useState<PlaybackState>(IDLE_PLAYBACK);
-	const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+	// ── rAF-based playback engine using computeFrameState ──
+	const [frameState, setFrameState] = useState<DemoFrameState | null>(null);
+	const rafRef = useRef<number>(0);
+	const startTimeRef = useRef<number>(0);
+	const playedClickRef = useRef<boolean>(false);
 
-	const clearPlaybackTimers = useCallback(() => {
-		for (const id of timerRef.current) clearTimeout(id);
-		timerRef.current = [];
-	}, []);
+	// ── Zoom transform for editor preview ─────────────────────────────────────
+	// 思路（参考视频编辑器）：
+	//  1) 计算焦点 = 缩放区域中心 (cx, cy)，归一化到 [0,1]
+	//  2) clamp 到安全范围 [1/(2s), 1-1/(2s)]，避免缩放后画布边缘露白
+	//  3) 按 target scale 计算最终偏移 finalT = stageCenter - focusPx * targetScale
+	//  4) 实际偏移 = finalT * progress，scale 也用 progress 渐进，保证进场流畅
+	const zoomTransform = useMemo(() => {
+		const z = frameState?.zoom;
+		if (!z || z.progress <= 0) return undefined;
+		const zoomLevel = z.region.zoomLevel ?? 3;
+		const targetScale = ZOOM_LEVEL_SCALES[zoomLevel];
+		const w = imgDisplaySize.width;
+		const h = imgDisplaySize.height;
+		if (w <= 0 || h <= 0) return undefined;
 
-	const schedule = useCallback((fn: () => void, delay: number) => {
-		const id = setTimeout(fn, delay);
-		timerRef.current.push(id);
-	}, []);
+		// 焦点（区域中心）归一化坐标
+		const rawCx = (z.region.x + z.region.width / 2) / 100;
+		const rawCy = (z.region.y + z.region.height / 2) / 100;
+		// clamp：保证缩放后视口完全落在原图范围内
+		const margin = Math.min(0.5, 1 / (2 * targetScale));
+		const focusCx = Math.max(margin, Math.min(1 - margin, rawCx));
+		const focusCy = Math.max(margin, Math.min(1 - margin, rawCy));
+
+		// 焦点像素坐标
+		const focusPxX = focusCx * w;
+		const focusPxY = focusCy * h;
+		// 最终偏移（按目标倍率）
+		const finalTx = w / 2 - focusPxX * targetScale;
+		const finalTy = h / 2 - focusPxY * targetScale;
+		// 当前帧偏移与缩放（按进度渐进）
+		const scale = 1 + (targetScale - 1) * z.progress;
+		const tx = finalTx * z.progress;
+		const ty = finalTy * z.progress;
+
+		return {
+			transform: `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale})`,
+			transformOrigin: "0 0",
+		};
+	}, [frameState?.zoom, imgDisplaySize]);
 
 	// Reset playback state when stopping
 	useEffect(() => {
 		if (!isPlaying) {
-			clearPlaybackTimers();
-			setPlayback(IDLE_PLAYBACK);
+			cancelAnimationFrame(rafRef.current);
+			setFrameState(null);
 		}
-	}, [isPlaying, clearPlaybackTimers]);
+	}, [isPlaying]);
 
 	// Escape key to stop playback
 	useEffect(() => {
@@ -385,137 +380,55 @@ function CanvasAreaInner({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [isPlaying, onStopPlayback]);
 
-	// Main playback sequence
+	// Main playback loop using requestAnimationFrame + computeFrameState
 	useEffect(() => {
-		if (!isPlaying || !step) return;
+		if (!isPlaying || !step || !project) return;
 
-		clearPlaybackTimers();
-		setPlayback({
-			cursorPos: null,
-			cursorVisible: false,
-			clickingId: null,
-			highlightedIds: new Set(),
-			tooltipId: null,
-			phase: "idle",
-		});
+		startTimeRef.current = performance.now();
+		playedClickRef.current = false;
 
-		const hotspots = [...step.hotspots]; // preserve insertion order
-		const transitionDuration =
-			step.transition.type === "none" ? 50 : (step.transition.duration ?? TRANSITION_MS);
-		if (hotspots.length === 0) {
-			// No hotspots: hold then advance
-			schedule(() => {
-				setPlayback((p) => ({ ...p, phase: "transitioning" }));
-				schedule(() => onStepPlaybackDone(), transitionDuration);
-			}, 2000);
-			return () => clearPlaybackTimers();
-		}
+		// Build a single-step project for computeFrameState
+		const singleStepProject: DemoProject = {
+			...project,
+			steps: [step],
+		};
 
-		let delay = INITIAL_DELAY_MS;
+		const totalMs = computeTotalDurationMs(singleStepProject);
 
-		// 串行显示高亮区域：前一个消失后才显示下一个
-		const highlightAreas = hotspots.filter((h) => !isCursorMarker(h));
-		let highlightDelay = delay;
-		highlightAreas.forEach((h) => {
-			const duration = h.highlightDuration ?? DEFAULT_HIGHLIGHT_DURATION_MS;
-			const appearTime = highlightDelay;
+		function tick() {
+			const elapsed = performance.now() - startTimeRef.current;
 
-			// 高亮淡入显示
-			schedule(
-				() =>
-					setPlayback((p) => ({
-						...p,
-						highlightedIds: new Set([...p.highlightedIds, h.id]),
-					})),
-				appearTime,
-			);
+			try {
+				const state = computeFrameState(singleStepProject, elapsed);
+				setFrameState(state);
 
-			// 显示指定时长后淡出消失
-			schedule(
-				() =>
-					setPlayback((p) => {
-						const next = new Set(p.highlightedIds);
-						next.delete(h.id);
-						return { ...p, highlightedIds: next };
-					}),
-				appearTime + HIGHLIGHT_FADE_MS + duration,
-			);
-
-			// 下一个高亮在上一个淡出完成后才开始
-			highlightDelay += HIGHLIGHT_FADE_MS + duration + HIGHLIGHT_FADE_MS;
-		});
-		if (highlightAreas.length > 0) {
-			delay = highlightDelay + 300;
-		}
-
-		// Animate cursor through each cursor marker in sequence
-		const cursorMarkers = hotspots.filter(isCursorMarker);
-
-		if (cursorMarkers.length > 0) {
-			// Show cursor
-			schedule(() => setPlayback((p) => ({ ...p, cursorVisible: true })), delay);
-			delay += 100;
-
-			cursorMarkers.forEach((marker) => {
-				const target = marker.mouseTarget ?? {
-					x: marker.x + marker.width / 2,
-					y: marker.y + marker.height / 2,
-				};
-
-				// Move cursor
-				schedule(() => {
-					setPlayback((p) => ({
-						...p,
-						phase: "moving",
-						cursorPos: target,
-						cursorVisible: true,
-					}));
-				}, delay);
-				delay += CURSOR_MOVE_MS;
-
-				// 点击效果 + 音效
-				schedule(() => {
-					setPlayback((p) => ({
-						...p,
-						phase: "clicking",
-						clickingId: marker.id,
-						tooltipId: marker.tooltip ? marker.id : p.tooltipId,
-					}));
+				// Play click sound when a click effect first appears
+				if (state.clickEffect && !playedClickRef.current) {
+					playedClickRef.current = true;
 					playClickSound();
-				}, delay);
-				delay += CLICK_EFFECT_MS;
+				}
+				if (!state.clickEffect) {
+					playedClickRef.current = false;
+				}
 
-				// Clear click, hold
-				schedule(() => {
-					setPlayback((p) => ({ ...p, phase: "holding", clickingId: null }));
-				}, delay);
-				delay += HOLD_AFTER_CLICK_MS;
-
-				// Brief pause before next marker
-				delay += HOLD_BETWEEN_MS;
-			});
-
-			// Hide cursor after all markers
-			schedule(() => {
-				setPlayback((p) => ({ ...p, cursorVisible: false }));
-			}, delay);
-			delay += 200;
+				if (elapsed < totalMs) {
+					rafRef.current = requestAnimationFrame(tick);
+				} else {
+					onStepPlaybackDone();
+				}
+			} catch {
+				onStepPlaybackDone();
+			}
 		}
 
-		// Final hold, then transition
-		delay += FINAL_HOLD_MS;
-		schedule(() => {
-			setPlayback((p) => ({ ...p, phase: "transitioning" }));
-			schedule(() => onStepPlaybackDone(), transitionDuration);
-		}, delay);
-
-		return () => clearPlaybackTimers();
-	}, [isPlaying, step, schedule, clearPlaybackTimers, onStepPlaybackDone]);
+		rafRef.current = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(rafRef.current);
+	}, [isPlaying, step, project, onStepPlaybackDone]);
 
 	// Canvas cursor style
 	const canvasCursorClass = isPlaying
 		? "cursor-default"
-		: annotationMode === "cursor" || annotationMode === "highlight"
+		: annotationMode === "cursor" || annotationMode === "highlight" || annotationMode === "zoom"
 			? "cursor-crosshair"
 			: "cursor-default";
 
@@ -601,118 +514,82 @@ function CanvasAreaInner({
 								onMouseUp={handleMouseUp}
 								onMouseLeave={handleMouseUp}
 							>
-								<img
-									src={screenshot.url}
-									alt={screenshot.originalName}
-									className="w-full h-full select-none"
-									draggable={false}
-									onLoad={(e) => {
-										const img = e.currentTarget;
-										setImgNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+								{/* Zoom layer：仅放大内部内容，外层容器保持固定尺寸 */}
+								<div
+									className="absolute inset-0"
+									style={{
+										...(zoomTransform ?? {}),
+										transition: zoomTransform ? "none" : undefined,
 									}}
-								/>
+								>
+									<img
+										src={screenshot.url}
+										alt={screenshot.originalName}
+										className="w-full h-full select-none"
+										draggable={false}
+										onLoad={(e) => {
+											const img = e.currentTarget;
+											setImgNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+										}}
+									/>
 
-								{/* Hotspot overlays — hide during playback, show editor markers */}
-								{!isPlaying &&
-									step?.hotspots.map((hotspot) => (
-										<HotspotOverlay
-											key={hotspot.id}
-											hotspot={hotspot}
-											isSelected={selectedHotspotId === hotspot.id}
-											onSelect={() => onSelectHotspot(hotspot.id)}
-											onDrag={handleHotspotDrag}
-											onResize={handleHotspotResize}
-										/>
-									))}
-
-								{/* ── 播放：高亮区域，使用自定义颜色 ── */}
-								{isPlaying &&
-									step?.hotspots
-										.filter((h) => !isCursorMarker(h))
-										.map((h) => (
-											<PlaybackHighlight
-												key={h.id}
-												hotspot={h}
-												isActive={playback.highlightedIds.has(h.id)}
+									{/* Hotspot overlays — hide during playback, show editor markers */}
+									{!isPlaying &&
+										step?.hotspots.map((hotspot) => (
+											<HotspotOverlay
+												key={hotspot.id}
+												hotspot={hotspot}
+												isSelected={selectedHotspotId === hotspot.id}
+												annotationMode={annotationMode}
+												onSelect={() => onSelectHotspot(hotspot.id)}
+												onDrag={handleHotspotDrag}
+												onResize={handleHotspotResize}
 											/>
 										))}
 
-								{/* ── 播放：点击效果 + 浮动说明 ── */}
-								{isPlaying &&
-									playback.clickingId &&
-									step?.hotspots
-										.filter((h) => h.id === playback.clickingId)
-										.map((h) => {
-											const cx = h.mouseTarget?.x ?? h.x + h.width / 2;
-											const cy = h.mouseTarget?.y ?? h.y + h.height / 2;
-											return (
-												<React.Fragment key={h.id}>
-													<PlaybackClickEffect hotspot={h} x={cx} y={cy} />
-													{h.tooltip && <PlaybackTooltip text={h.tooltip} x={cx} y={cy} />}
-												</React.Fragment>
-											);
-										})}
-
-								{/* ── 播放：动画光标 ── */}
-								{isPlaying && playback.cursorVisible && playback.cursorPos && (
-									<div
-										className="absolute pointer-events-none"
-										style={{
-											left: `${playback.cursorPos.x}%`,
-											top: `${playback.cursorPos.y}%`,
-											width: 32,
-											height: 32,
-											marginLeft: -4,
-											marginTop: -2,
-											transition: `left ${CURSOR_MOVE_MS}ms cubic-bezier(0.4, 0, 0.2, 1), top ${CURSOR_MOVE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-											zIndex: 50,
-										}}
-									>
-										<img
-											src={CURSOR_IMAGE_MAP[cursorType ?? "default"] ?? cursorDefaultUrl}
-											alt="cursor"
-											className="w-full h-full"
-											style={{
-												filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))",
-											}}
-											draggable={false}
+									{/* ── Playback: DemoFrameView ── */}
+									{isPlaying && frameState && (
+										<DemoFrameView
+											state={frameState}
+											width={imgDisplaySize.width}
+											height={imgDisplaySize.height}
+											background={background}
+											appearance={appearance}
+											screenshots={screenshotMap}
+											screenshotList={project.screenshots}
+											cursorType={cursorType}
+											cursorTheme={cursorTheme}
+											skipChrome
 										/>
-									</div>
-								)}
+									)}
 
-								{/* ── Playback: transition overlay ── */}
-								{isPlaying && playback.phase === "transitioning" && (
-									<TransitionLayer
-										type={step?.transition.type ?? "fade"}
-										duration={step?.transition.duration ?? TRANSITION_MS}
-										prevScreenshotUrl={prevScreenshotUrlRef.current}
-										currentScreenshotUrl={screenshot?.url ?? null}
-										borderRadius={appearance.borderRadius}
-										imgWidth={imgDisplaySize.width}
-										imgHeight={imgDisplaySize.height}
-									/>
-								)}
+									{/* Drawing preview rectangle (highlight / zoom mode) */}
+									{!isPlaying && isDrawing && drawStart && drawCurrent && (
+										<div
+											className={`absolute border-2 ${
+												annotationMode === "zoom"
+													? "border-[#3B82F6] bg-[#3B82F6]/10"
+													: "border-[#34B27B] bg-[#34B27B]/10"
+											} pointer-events-none`}
+											style={{
+												left: `${Math.min(drawStart.x, drawCurrent.x)}%`,
+												top: `${Math.min(drawStart.y, drawCurrent.y)}%`,
+												width: `${Math.abs(drawCurrent.x - drawStart.x)}%`,
+												height: `${Math.abs(drawCurrent.y - drawStart.y)}%`,
+											}}
+										/>
+									)}
+								</div>
 
-								{/* Drawing preview rectangle (highlight mode) */}
-								{!isPlaying && isDrawing && drawStart && drawCurrent && (
-									<div
-										className="absolute border-2 border-[#34B27B] bg-[#34B27B]/10 pointer-events-none"
-										style={{
-											left: `${Math.min(drawStart.x, drawCurrent.x)}%`,
-											top: `${Math.min(drawStart.y, drawCurrent.y)}%`,
-											width: `${Math.abs(drawCurrent.x - drawStart.x)}%`,
-											height: `${Math.abs(drawCurrent.y - drawStart.y)}%`,
-										}}
-									/>
-								)}
-
-								{/* Annotation mode hint overlay */}
+								{/* Annotation mode hint overlay — 不参与缩放 */}
 								{!isPlaying && annotationMode && (
 									<div className="absolute inset-0 pointer-events-none flex items-start justify-center pt-2">
 										<div className="px-2.5 py-1 rounded-full bg-[#34B27B]/90 text-white text-[10px] font-medium shadow-lg backdrop-blur-sm">
 											{annotationMode === "cursor"
 												? t("canvas.clickToPlaceCursor")
-												: t("canvas.dragToDrawHighlight")}
+												: annotationMode === "zoom"
+													? t("canvas.dragToDrawZoomRegion")
+													: t("canvas.dragToDrawHighlight")}
 										</div>
 									</div>
 								)}
@@ -728,154 +605,11 @@ function CanvasAreaInner({
 // Memoize to prevent re-renders when parent state changes but our props are identical
 export const CanvasArea = React.memo(CanvasAreaInner);
 
-// ─── 播放视觉组件 ──────────────────────────────────────────────────────────
-
-/** 播放时的高亮遮罩层：区域内透明、区域外遮罩，支持多种形状 */
-function PlaybackHighlight({ hotspot, isActive }: { hotspot: Hotspot; isActive: boolean }) {
-	const color = hotspot.highlightColor || "#34B27B";
-	const shape = hotspot.shape ?? "rect";
-
-	// 生成 SVG 切割路径（even-odd 填充规则）
-	const cutoutPath = useMemo(() => {
-		const x = hotspot.x;
-		const y = hotspot.y;
-		const w = hotspot.width;
-		const h = hotspot.height;
-		const fullRect = "M0 0H100V100H0Z";
-		if (shape === "circle" || shape === "ellipse") {
-			const cx = x + w / 2;
-			const cy = y + h / 2;
-			const rx = w / 2;
-			const ry = h / 2;
-			return `${fullRect} M${cx - rx} ${cy}A${rx} ${ry} 0 1 0 ${cx + rx} ${cy}A${rx} ${ry} 0 1 0 ${cx - rx} ${cy}Z`;
-		}
-		return `${fullRect} M${x} ${y}H${x + w}V${y + h}H${x}Z`;
-	}, [hotspot.x, hotspot.y, hotspot.width, hotspot.height, shape]);
-
-	return (
-		<>
-			{/* SVG 遮罩层：区域内透明，区域外半透明遮罩 */}
-			<svg
-				className="absolute inset-0 w-full h-full pointer-events-none transition-opacity"
-				viewBox="0 0 100 100"
-				preserveAspectRatio="none"
-				style={{
-					opacity: isActive ? 1 : 0,
-					transitionDuration: `${HIGHLIGHT_FADE_MS}ms`,
-					zIndex: 10,
-				}}
-			>
-				<path d={cutoutPath} fill="rgba(0,0,0,0.55)" fillRule="evenodd" />
-			</svg>
-
-			{/* 高亮区域形状描边 */}
-			<div
-				className="absolute pointer-events-none transition-all"
-				style={{
-					left: `${hotspot.x}%`,
-					top: `${hotspot.y}%`,
-					width: `${hotspot.width}%`,
-					height: `${hotspot.height}%`,
-					opacity: isActive ? 1 : 0,
-					transitionDuration: `${HIGHLIGHT_FADE_MS}ms`,
-					zIndex: 11,
-				}}
-			>
-				<svg
-					viewBox="0 0 100 100"
-					preserveAspectRatio="none"
-					style={{ width: "100%", height: "100%", overflow: "visible" }}
-				>
-					{shape === "rect" && (
-						<rect
-							x="0"
-							y="0"
-							width="100"
-							height="100"
-							fill="none"
-							stroke={color}
-							strokeWidth="2"
-							vectorEffect="non-scaling-stroke"
-						/>
-					)}
-					{(shape === "circle" || shape === "ellipse") && (
-						<ellipse
-							cx="50"
-							cy="50"
-							rx="50"
-							ry="50"
-							fill="none"
-							stroke={color}
-							strokeWidth="2"
-							vectorEffect="non-scaling-stroke"
-						/>
-					)}
-				</svg>
-				{hotspot.label && isActive && (
-					<span className="absolute -top-6 left-0 text-[10px] bg-zinc-900/90 text-zinc-200 px-1.5 py-0.5 rounded whitespace-nowrap backdrop-blur-sm">
-						{hotspot.label}
-					</span>
-				)}
-			</div>
-		</>
-	);
-}
-
-/** 点击效果组件 */
-function PlaybackClickEffect({ hotspot, x, y }: { hotspot: Hotspot; x: number; y: number }) {
-	return (
-		<div
-			className="absolute pointer-events-none"
-			style={{
-				left: `${x}%`,
-				top: `${y}%`,
-				width: 44,
-				height: 44,
-				marginLeft: -22,
-				marginTop: -22,
-				zIndex: 45,
-			}}
-		>
-			{hotspot.clickAnimation === "ripple" && (
-				<div className="absolute inset-0 rounded-full animate-ping bg-[#34B27B]/30" />
-			)}
-			{hotspot.clickAnimation === "zoom" && (
-				<div className="absolute inset-0 rounded-full animate-pulse bg-[#34B27B]/20" />
-			)}
-			{hotspot.clickAnimation === "flash" && (
-				<div className="absolute inset-0 rounded-full bg-white/50 animate-[flash_0.3s_ease-out]" />
-			)}
-		</div>
-	);
-}
-
-/** 播放时的浮动说明气泡，显示在光标点击位置上方 */
-function PlaybackTooltip({ text, x, y }: { text: string; x: number; y: number }) {
-	return (
-		<div
-			className="absolute pointer-events-none"
-			style={{
-				left: `${x}%`,
-				top: `${y}%`,
-				transform: "translate(-50%, -130%)",
-				zIndex: 55,
-				animation: "fadeIn 300ms ease-out forwards",
-			}}
-		>
-			<div className="px-2.5 py-1.5 rounded-lg bg-zinc-900/95 text-white text-[11px] font-medium shadow-xl backdrop-blur-sm border border-white/10 whitespace-nowrap max-w-[200px] truncate">
-				{text}
-			</div>
-			{/* 小三角箭头 */}
-			<div className="w-0 h-0 mx-auto border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-zinc-900/95" />
-		</div>
-	);
-}
-
 // ─── Annotation Toolbar ──────────────────────────────────────────────────────
 
 interface AnnotationToolbarProps {
-	mode: "cursor" | "highlight" | null;
-	onChangeMode: (mode: "cursor" | "highlight" | null) => void;
+	mode: "cursor" | "highlight" | "zoom" | null;
+	onChangeMode: (mode: "cursor" | "highlight" | "zoom" | null) => void;
 	hasStep: boolean;
 }
 
@@ -921,6 +655,31 @@ const AnnotationToolbar = React.memo(function AnnotationToolbar({
 					<rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" opacity="0.25" />
 				</svg>
 				<span>{t("toolbar.highlightAnnotation")}</span>
+			</ToolbarButton>
+
+			<div className="w-px h-4 bg-zinc-800" />
+
+			<ToolbarButton
+				active={mode === "zoom"}
+				disabled={!hasStep}
+				onClick={() => onChangeMode(mode === "zoom" ? null : "zoom")}
+				title={t("toolbar.zoomAnnotationTitle")}
+			>
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					className="shrink-0"
+				>
+					<circle cx="11" cy="11" r="7" />
+					<line x1="16.5" y1="16.5" x2="21" y2="21" />
+					<line x1="8" y1="11" x2="14" y2="11" />
+					<line x1="11" y1="8" x2="11" y2="14" />
+				</svg>
+				<span>{t("toolbar.zoomAnnotation")}</span>
 			</ToolbarButton>
 
 			{mode && (
@@ -978,6 +737,7 @@ function ToolbarButton({
 interface HotspotOverlayProps {
 	hotspot: Hotspot;
 	isSelected: boolean;
+	annotationMode: "cursor" | "highlight" | "zoom" | null;
 	onSelect: () => void;
 	onDrag: (hotspotId: string, x: number, y: number) => void;
 	onResize: (
@@ -1028,6 +788,7 @@ function shapePath(shape: string, x: number, y: number, w: number, h: number): s
 const HotspotOverlay = React.memo(function HotspotOverlay({
 	hotspot,
 	isSelected,
+	annotationMode,
 	onSelect,
 	onDrag,
 	onResize,
@@ -1054,6 +815,8 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 
 	const handleMouseDown = useCallback(
 		(e: React.MouseEvent) => {
+			// 在光标标注模式下，不阻止事件冒泡，让父级处理光标放置
+			if (annotationMode === "cursor") return;
 			e.stopPropagation();
 			onSelect();
 			setIsDragging(true);
@@ -1064,7 +827,7 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 				hotspotY: hotspot.y,
 			};
 		},
-		[onSelect, hotspot.x, hotspot.y],
+		[annotationMode, onSelect, hotspot.x, hotspot.y],
 	);
 
 	const handleDragMove = useCallback(
@@ -1105,6 +868,8 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 	// 缩放拖拽处理器
 	const handleResizeMouseDown = useCallback(
 		(e: React.MouseEvent, handle: ResizeHandlePos) => {
+			// 在光标标注模式下，不阻止事件冒泡
+			if (annotationMode === "cursor") return;
 			e.stopPropagation();
 			e.preventDefault();
 			onSelect();
@@ -1119,7 +884,7 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 				initH: hotspot.height,
 			};
 		},
-		[hotspot.x, hotspot.y, hotspot.width, hotspot.height, onSelect],
+		[annotationMode, hotspot.x, hotspot.y, hotspot.width, hotspot.height, onSelect],
 	);
 
 	const handleResizeMove = useCallback(
@@ -1176,8 +941,9 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 		};
 	}, [isResizing, handleResizeMove, handleResizeUp]);
 
-	// Render differently for cursor markers vs highlight hotspots
+	// Render differently for cursor markers vs highlight hotspots vs zoom regions
 	const cursorMarker = isCursorMarker(hotspot);
+	const zoomRegion = isZoomRegion(hotspot);
 
 	if (cursorMarker) {
 		const borderColor = isSelected ? "#34B27B" : "rgba(52, 178, 123, 0.6)";
@@ -1220,8 +986,8 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 		);
 	}
 
-	// 普通高亮热点，支持形状、遮罩和拖拽缩放
-	const hColor = hotspot.highlightColor || "#34B27B";
+	// 普通高亮热点 / 缩放区域，支持形状、遮罩和拖拽缩放
+	const hColor = zoomRegion ? "#3B82F6" : hotspot.highlightColor || "#34B27B";
 	const shape = hotspot.shape ?? "rect";
 
 	return (
@@ -1275,10 +1041,28 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 					fill="none"
 					stroke={hColor}
 					strokeWidth={isSelected ? "2.5" : "1.5"}
-					strokeDasharray={isSelected ? "none" : "4 2"}
+					strokeDasharray={zoomRegion ? "4 2" : isSelected ? "none" : "4 2"}
 					vectorEffect="non-scaling-stroke"
 				/>
 			</svg>
+
+			{/* 缩放区域标识 */}
+			{zoomRegion && (
+				<div className="absolute -top-5 left-0 flex items-center gap-1 text-[10px] text-[#3B82F6] whitespace-nowrap pointer-events-none">
+					<svg
+						width="10"
+						height="10"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+					>
+						<circle cx="11" cy="11" r="7" />
+						<line x1="16.5" y1="16.5" x2="21" y2="21" />
+					</svg>
+					{hotspot.zoomLevel != null ? `${ZOOM_LEVEL_SCALES[hotspot.zoomLevel ?? 3]}×` : ""}
+				</div>
+			)}
 
 			{/* 标签 */}
 			{hotspot.label && (
@@ -1315,212 +1099,3 @@ const HotspotOverlay = React.memo(function HotspotOverlay({
 		</div>
 	);
 });
-
-// ─── 转场动画层 ─────────────────────────────────────────────────────────────
-
-interface TransitionLayerProps {
-	type: TransitionType;
-	duration: number;
-	prevScreenshotUrl: string | null;
-	currentScreenshotUrl: string | null;
-	borderRadius: number;
-	imgWidth: number;
-	imgHeight: number;
-}
-
-/**
- * 步骤切换时的转场动画层。
- * 支持淡入淡出、滑动、缩放、溶解、擦除等多种效果。
- */
-function TransitionLayer({
-	type,
-	duration,
-	prevScreenshotUrl,
-	currentScreenshotUrl,
-	borderRadius,
-	imgWidth,
-	imgHeight,
-}: TransitionLayerProps) {
-	// 无转场效果
-	if (type === "none") return null;
-
-	const baseStyle: React.CSSProperties = {
-		position: "absolute",
-		left: 0,
-		top: 0,
-		width: imgWidth,
-		height: imgHeight,
-		borderRadius,
-		overflow: "hidden",
-		pointerEvents: "none",
-		zIndex: 60,
-	};
-
-	// 滑动类型需要双层渲染：旧图退出 + 新图进入
-	if (type === "slide-left" || type === "slide-right" || type === "slide-up") {
-		const configs: Record<string, { exitAnim: string; enterAnim: string }> = {
-			"slide-left": { exitAnim: "demo-slide-exit-left", enterAnim: "demo-slide-enter-right" },
-			"slide-right": { exitAnim: "demo-slide-exit-right", enterAnim: "demo-slide-enter-left" },
-			"slide-up": { exitAnim: "demo-slide-exit-up", enterAnim: "demo-slide-enter-up" },
-		};
-		const cfg = configs[type];
-		return (
-			<>
-				{/* 旧截图退出 */}
-				{prevScreenshotUrl && prevScreenshotUrl !== currentScreenshotUrl && (
-					<div
-						style={{
-							...baseStyle,
-							animation: `${cfg.exitAnim} ${duration}ms ease-in-out forwards`,
-						}}
-					>
-						<img
-							src={prevScreenshotUrl}
-							alt=""
-							className="w-full h-full object-cover"
-							draggable={false}
-						/>
-					</div>
-				)}
-				{/* 新截图进入 */}
-				<div
-					style={{
-						...baseStyle,
-						animation: `${cfg.enterAnim} ${duration}ms ease-in-out forwards`,
-						zIndex: 61,
-					}}
-				>
-					<img
-						src={currentScreenshotUrl ?? ""}
-						alt=""
-						className="w-full h-full object-cover"
-						draggable={false}
-					/>
-				</div>
-			</>
-		);
-	}
-
-	// 缩放类型
-	if (type === "zoom") {
-		return (
-			<>
-				{/* 旧截图缩小退出 */}
-				{prevScreenshotUrl && prevScreenshotUrl !== currentScreenshotUrl && (
-					<div
-						style={{
-							...baseStyle,
-							animation: `demo-zoom-out ${duration}ms ease-in forwards`,
-						}}
-					>
-						<img
-							src={prevScreenshotUrl}
-							alt=""
-							className="w-full h-full object-cover"
-							draggable={false}
-						/>
-					</div>
-				)}
-				{/* 新截图放大进入 */}
-				<div
-					style={{
-						...baseStyle,
-						animation: `demo-zoom-in ${duration}ms ease-out forwards`,
-						zIndex: 61,
-					}}
-				>
-					<img
-						src={currentScreenshotUrl ?? ""}
-						alt=""
-						className="w-full h-full object-cover"
-						draggable={false}
-					/>
-				</div>
-			</>
-		);
-	}
-
-	// 溶解类型（透明度交叉淡入淡出）
-	if (type === "dissolve") {
-		return (
-			<>
-				{/* 旧截图淡出 */}
-				{prevScreenshotUrl && prevScreenshotUrl !== currentScreenshotUrl && (
-					<div
-						style={{
-							...baseStyle,
-							animation: `demo-fade-in ${duration}ms ease-in-out reverse forwards`,
-						}}
-					>
-						<img
-							src={prevScreenshotUrl}
-							alt=""
-							className="w-full h-full object-cover"
-							draggable={false}
-						/>
-					</div>
-				)}
-				{/* 新截图淡入 */}
-				<div
-					style={{
-						...baseStyle,
-						animation: `demo-fade-in ${duration}ms ease-in-out forwards`,
-						zIndex: 61,
-					}}
-				>
-					<img
-						src={currentScreenshotUrl ?? ""}
-						alt=""
-						className="w-full h-full object-cover"
-						draggable={false}
-					/>
-				</div>
-			</>
-		);
-	}
-
-	// 擦除类型（从左到右擦除）
-	if (type === "wipe") {
-		return (
-			<>
-				{/* 旧截图保持底层 */}
-				{prevScreenshotUrl && prevScreenshotUrl !== currentScreenshotUrl && (
-					<div style={baseStyle}>
-						<img
-							src={prevScreenshotUrl}
-							alt=""
-							className="w-full h-full object-cover"
-							draggable={false}
-						/>
-					</div>
-				)}
-				{/* 新截图通过 clip-path 擦除显示 */}
-				<div
-					style={{
-						...baseStyle,
-						animation: `demo-wipe ${duration}ms ease-in-out forwards`,
-						zIndex: 61,
-					}}
-				>
-					<img
-						src={currentScreenshotUrl ?? ""}
-						alt=""
-						className="w-full h-full object-cover"
-						draggable={false}
-					/>
-				</div>
-			</>
-		);
-	}
-
-	// 默认淡入黑色遮罩（fade 类型）
-	return (
-		<div
-			className="absolute inset-0 bg-black pointer-events-none"
-			style={{
-				animation: `demo-fade-in ${duration}ms ease-in forwards`,
-				zIndex: 60,
-			}}
-		/>
-	);
-}

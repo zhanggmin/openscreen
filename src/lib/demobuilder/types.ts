@@ -50,6 +50,31 @@ export type HighlightShape = "rect" | "circle" | "ellipse";
 
 export type ClickAnimation = "ripple" | "zoom" | "flash" | "none";
 
+/** 缩放倍率级别（与视频编辑器对齐） */
+export type ZoomLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+/** 缩放倍率 → 实际 scale 值映射 */
+export const ZOOM_LEVEL_SCALES: Record<ZoomLevel, number> = {
+	1: 1.25,
+	2: 1.5,
+	3: 1.8,
+	4: 2.2,
+	5: 3.5,
+	6: 5.0,
+};
+
+/** 缩放级别选项（UI 展示用） */
+export const ZOOM_LEVEL_OPTIONS: Array<{ level: ZoomLevel; label: string; scale: number }> = [
+	{ level: 1, label: "1.25×", scale: 1.25 },
+	{ level: 2, label: "1.5×", scale: 1.5 },
+	{ level: 3, label: "1.8×", scale: 1.8 },
+	{ level: 4, label: "2.2×", scale: 2.2 },
+	{ level: 5, label: "3.5×", scale: 3.5 },
+	{ level: 6, label: "5×", scale: 5.0 },
+];
+
+export const DEFAULT_ZOOM_LEVEL: ZoomLevel = 3;
+
 export interface Hotspot {
 	id: string;
 	/** The step this hotspot belongs to. */
@@ -80,6 +105,31 @@ export interface Hotspot {
 	shape?: HighlightShape;
 	/** 高亮显示时长（毫秒），默认 1000。播放时高亮显示后自动消失。 */
 	highlightDuration?: number;
+	/**
+	 * 缩放倍率级别（1-6，对应 ZOOM_LEVEL_SCALES）。
+	 * 非空表示该热点为缩放区域。播放时视图会放大到该区域。
+	 */
+	zoomLevel?: ZoomLevel;
+}
+
+/** 判断热点是否为鼠标标注（小圆点，有点击动画）。排除缩放区域。 */
+export function isCursorMarker(hotspot: Hotspot): boolean {
+	return (
+		hotspot.zoomLevel == null &&
+		hotspot.width <= 3 &&
+		hotspot.height <= 3 &&
+		hotspot.clickAnimation !== "none"
+	);
+}
+
+/** 判断热点是否为高亮区域（非缩放、非光标标注）。 */
+export function isHighlightArea(hotspot: Hotspot): boolean {
+	return hotspot.zoomLevel == null && !isCursorMarker(hotspot);
+}
+
+/** 判断热点是否为缩放区域。 */
+export function isZoomRegion(hotspot: Hotspot): boolean {
+	return hotspot.zoomLevel != null;
 }
 
 // ─── Cursor Animation ─────────────────────────────────────────────────────────
@@ -279,6 +329,12 @@ export interface ProjectSettings {
 	sound: DemoSound;
 	/** Default cursor visual style for new steps. */
 	defaultCursorType: CursorStyle;
+	/**
+	 * 光标主题 ID（对应 cursorThemes.ts 中的主题）。
+	 * 设置后，播放时移动状态显示 arrow 图片，点击状态显示 pointer 图片。
+	 * 未设置或为 "default" 时使用内置 SVG 光标。
+	 */
+	cursorTheme?: string;
 	/** Default transition between steps. */
 	defaultTransition: Transition;
 	/** Default hotspot highlight style. */
@@ -324,6 +380,7 @@ export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
 		backgroundMusicVolume: 0.5,
 	},
 	defaultCursorType: "default",
+	cursorTheme: "default",
 	defaultTransition: { type: "fade", duration: 500 },
 	defaultHighlightStyle: "border",
 	exportSettings: {
@@ -337,11 +394,11 @@ export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
 /** Default cursor animation for a new step. */
 export const DEFAULT_CURSOR_ANIMATION: CursorAnimation = {
 	type: "default",
-	startPosition: { x: 10, y: 50 },
+	startPosition: { x: 50, y: 50 },
 	endPosition: { x: 50, y: 50 },
 	movementType: "easing",
 	easingFunction: "power2.inOut",
-	movementDuration: 800,
+	movementDuration: 500,
 	clickEffect: "ripple",
 	clickSound: true,
 	delayBeforeClick: 200,

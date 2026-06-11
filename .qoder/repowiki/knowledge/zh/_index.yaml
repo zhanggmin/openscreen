@@ -2,7 +2,7 @@
 schema_version: 1
 locale: zh-CN
 branch: dev
-exported_at: "2026-06-08T07:56:56Z"
+exported_at: "2026-06-11T03:24:17Z"
 modules:
     "":
         dir_name: OpenScreen 跨平台桌面录屏与编辑工作台
@@ -41,33 +41,36 @@ modules:
             - .husky\_\prepare-commit-msg
             - .husky\pre-commit
             - .nvmrc
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\_module.yaml
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\技术栈.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\架构设计.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\概述.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\Electron 应用引导与主进程核心\编码规范.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\_module.yaml
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\技术栈.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\架构设计.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\概述.md
-            - .qoder\repowiki\knowledge\zh\Electron 主进程编排与原生能力桥接\编码规范.md
+            - .qoder\plans\DemoBuilder_UI_Restructure_ba0a5e4d.md
+            - .qoder\plans\DemoBuilder_视频导出方案_3d7dd2ea.md
+            - .qoder\plans\Remotion统一渲染架构重构_3d7dd2ea.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\Electron 主进程与应用引导\_module.yaml
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\Electron 主进程与应用引导\技术栈.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\Electron 主进程与应用引导\架构设计.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\Electron 主进程与应用引导\概述.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\Electron 主进程与应用引导\编码规范.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\_module.yaml
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\技术栈.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\架构设计.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\概述.md
+            - .qoder\repowiki\knowledge\zh\Electron 主进程与原生能力编排层\编码规范.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\_module.yaml
             - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\技术栈.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\架构设计.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\概述.md
+            - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\特殊配置与命令.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 跨平台桌面录屏与编辑工作台\编码规范.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\_module.yaml
             - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\技术栈.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\架构设计.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\概述.md
-            - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\特殊配置与命令.md
             - .qoder\repowiki\knowledge\zh\OpenScreen 项目文档与架构知识库\编码规范.md
             - .qoder\repowiki\knowledge\zh\_index.yaml
-            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\_module.yaml
-            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\技术栈.md
-            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\架构设计.md
-            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\概述.md
-            - .qoder\repowiki\knowledge\zh\视频剪辑与渲染引擎\编码规范.md
+            - .qoder\repowiki\knowledge\zh\视频录制与后期编辑工作台\_module.yaml
+            - .qoder\repowiki\knowledge\zh\视频录制与后期编辑工作台\技术栈.md
+            - .qoder\repowiki\knowledge\zh\视频录制与后期编辑工作台\架构设计.md
+            - .qoder\repowiki\knowledge\zh\视频录制与后期编辑工作台\概述.md
+            - .qoder\repowiki\knowledge\zh\视频录制与后期编辑工作台\编码规范.md
             - .qoder\repowiki\zh\content\API参考\API参考.md
             - .qoder\repowiki\zh\content\API参考\Electron IPC API\Electron IPC API.md
             - .qoder\repowiki\zh\content\API参考\Electron IPC API\原生桥接处理器.md
@@ -100,7 +103,9 @@ modules:
             - .qoder\repowiki\zh\content\导出系统\MP4导出实现.md
             - .qoder\repowiki\zh\content\导出系统\导出管道架构.md
             - .qoder\repowiki\zh\content\导出系统\导出系统.md
-            - .qoder\repowiki\zh\content\开发者指南.md
+            - .qoder\repowiki\zh\content\开发者指南\DemoBuilder产品需求文档.md
+            - .qoder\repowiki\zh\content\开发者指南\DemoBuilder开发指南.md
+            - .qoder\repowiki\zh\content\开发者指南\开发者指南.md
             - .qoder\repowiki\zh\content\录制系统\原生录制系统.md
             - .qoder\repowiki\zh\content\录制系统\屏幕录制系统.md
             - .qoder\repowiki\zh\content\录制系统\录制工作流程与控制.md
@@ -154,6 +159,9 @@ modules:
             - docs\README.md
             - docs\architecture\native-bridge.md
             - docs\dev\aliyun-tts-api.md
+            - docs\dev\shouce\demo-builder-enhancement-plan.md
+            - docs\dev\shouce\development-plan.md
+            - docs\dev\shouce\prd.md
             - docs\engineering\macos-native-recorder-roadmap.md
             - docs\engineering\windows-native-recorder-roadmap.md
             - docs\testing\macos-native-cursor.md
@@ -177,6 +185,7 @@ modules:
             - electron\native-bridge\cursor\recording\windowsNativeRecordingSession.types.ts
             - electron\native-bridge\cursor\telemetryCursorAdapter.ts
             - electron\native-bridge\services\cursorService.ts
+            - electron\native-bridge\services\demoService.ts
             - electron\native-bridge\services\projectService.ts
             - electron\native-bridge\services\systemService.ts
             - electron\native-bridge\store.ts
@@ -260,10 +269,15 @@ modules:
             - public\cursors\solo-leveling-sung-jinwoo-dark-flames\pointer.png
             - public\cursors\spring-gradient\arrow.png
             - public\cursors\spring-gradient\pointer.png
+            - public\demo.png
             - public\openscreen.png
             - public\preview3.png
             - public\preview4.png
             - public\rec-button.png
+            - public\sample.png
+            - public\sounds\business-168341.mp3
+            - public\sounds\click.mp3
+            - public\sounds\whoosh-6316.mp3
             - public\vite.svg
             - public\wallpapers\wallpaper1.jpg
             - public\wallpapers\wallpaper10.jpg
@@ -323,6 +337,18 @@ modules:
             - src\assets\cursors\Cursor=Zoom-In.svg
             - src\assets\cursors\Cursor=Zoom-Out.svg
             - src\assets\react.svg
+            - src\components\demo-builder\CanvasArea.tsx
+            - src\components\demo-builder\DemoDashboard.tsx
+            - src\components\demo-builder\DemoEditor.tsx
+            - src\components\demo-builder\DemoFrameView.tsx
+            - src\components\demo-builder\DemoPlaybackControls.tsx
+            - src\components\demo-builder\DemoPlayer.tsx
+            - src\components\demo-builder\DemoSidebar.tsx
+            - src\components\demo-builder\EditorBottomBar.tsx
+            - src\components\demo-builder\ExportDialog.tsx
+            - src\components\demo-builder\PropertiesPanel.tsx
+            - src\components\demo-builder\StepPanel.tsx
+            - src\components\demo-builder\TimelineStrip.tsx
             - src\components\launch\CountdownOverlay.tsx
             - src\components\launch\LaunchWindow.module.css
             - src\components\launch\LaunchWindow.tsx
@@ -429,6 +455,7 @@ modules:
             - src\i18n\locales\ar\shortcuts.json
             - src\i18n\locales\ar\timeline.json
             - src\i18n\locales\en\common.json
+            - src\i18n\locales\en\demobuilder.json
             - src\i18n\locales\en\dialogs.json
             - src\i18n\locales\en\editor.json
             - src\i18n\locales\en\launch.json
@@ -499,6 +526,7 @@ modules:
             - src\i18n\locales\vi\shortcuts.json
             - src\i18n\locales\vi\timeline.json
             - src\i18n\locales\zh-CN\common.json
+            - src\i18n\locales\zh-CN\demobuilder.json
             - src\i18n\locales\zh-CN\dialogs.json
             - src\i18n\locales\zh-CN\editor.json
             - src\i18n\locales\zh-CN\launch.json
@@ -539,6 +567,11 @@ modules:
             - src\lib\cursor\nativeCursor.test.ts
             - src\lib\cursor\nativeCursor.ts
             - src\lib\customFonts.ts
+            - src\lib\demobuilder\demoFrameRenderer.ts
+            - src\lib\demobuilder\demoPlaybackEngine.ts
+            - src\lib\demobuilder\demoTimeline.ts
+            - src\lib\demobuilder\demoVideoExporter.ts
+            - src\lib\demobuilder\types.ts
             - src\lib\exporter\annotationRenderer.ts
             - src\lib\exporter\asyncVideoFrameQueue.ts
             - src\lib\exporter\audioEncoder.test.ts
@@ -625,8 +658,8 @@ modules:
         related_to:
             - path: electron_main
     electron_main:
-        dir_name: Electron 主进程核心与原生能力桥接
-        title: Electron 主进程核心与原生能力桥接
+        dir_name: Electron 主进程与原生能力编排层
+        title: Electron 主进程与原生能力编排层
         scope:
             - electron/
         source_files: []
@@ -637,8 +670,8 @@ modules:
             - path: renderer_app
             - path: docs
     electron_main/app_bootstrap:
-        dir_name: Electron 应用引导与窗口管理
-        title: Electron 应用引导与窗口管理
+        dir_name: Electron 主进程与应用引导
+        title: Electron 主进程与应用引导
         scope:
             - electron/main.ts
             - electron/preload.ts
@@ -651,8 +684,8 @@ modules:
         depends_on: []
         related_to: []
     renderer_app:
-        dir_name: 视频编辑与渲染引擎
-        title: 视频编辑与渲染引擎
+        dir_name: 视频编辑与演示构建渲染器
+        title: 视频编辑与演示构建渲染器
         scope:
             - src/
         source_files: []

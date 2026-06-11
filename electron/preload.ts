@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	switchToEditor: () => {
 		return ipcRenderer.invoke("switch-to-editor");
 	},
+	openDemoDashboard: () => {
+		return ipcRenderer.invoke("open-demo-dashboard");
+	},
 	switchToHud: () => {
 		return ipcRenderer.invoke("switch-to-hud");
 	},

@@ -10,6 +10,12 @@
 import { Circle, MousePointerClick, Square, Trash2 } from "lucide-react";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { Hotspot, Screenshot, Step } from "@/lib/demobuilder/types";
+import {
+	isCursorMarker,
+	isZoomRegion,
+	ZOOM_LEVEL_OPTIONS,
+	ZOOM_LEVEL_SCALES,
+} from "@/lib/demobuilder/types";
 import { cn } from "@/lib/utils";
 
 // ─── 高亮颜色预设 ───────────────────────────────────────────────────────────
@@ -34,11 +40,6 @@ interface PropertiesPanelProps {
 	onUpdateHotspot: (hotspotId: string, updates: Partial<Hotspot>) => void;
 	onRemoveHotspot: (hotspotId: string) => void;
 	onSelectHotspot: (hotspotId: string | null) => void;
-}
-
-/** 判断热点是否为鼠标标注（小圆点） */
-function isCursorMarker(hotspot: Hotspot): boolean {
-	return hotspot.width <= 3 && hotspot.height <= 3 && hotspot.clickAnimation !== "none";
 }
 
 // ─── 主组件 ─────────────────────────────────────────────────────────────────
@@ -67,7 +68,13 @@ export function PropertiesPanel({
 		<div className="editor-inspector-shell h-full overflow-y-auto custom-scrollbar border-l border-white/[0.07] bg-[#0a0b0d]">
 			{/* 根据选中元素显示不同面板 */}
 			{hotspot ? (
-				isCursorMarker(hotspot) ? (
+				isZoomRegion(hotspot) ? (
+					<ZoomRegionPanel
+						hotspot={hotspot}
+						onUpdateHotspot={onUpdateHotspot}
+						onRemoveHotspot={onRemoveHotspot}
+					/>
+				) : isCursorMarker(hotspot) ? (
 					<CursorMarkerPanel
 						hotspot={hotspot}
 						onUpdateHotspot={onUpdateHotspot}
@@ -107,7 +114,8 @@ function StepInfoPanel({
 }) {
 	const t = useScopedT("demobuilder");
 	const cursorMarkers = step.hotspots.filter(isCursorMarker);
-	const highlights = step.hotspots.filter((h) => !isCursorMarker(h));
+	const zoomRegions = step.hotspots.filter(isZoomRegion);
+	const highlights = step.hotspots.filter((h) => !isCursorMarker(h) && !isZoomRegion(h));
 
 	return (
 		<>
@@ -313,6 +321,37 @@ function StepInfoPanel({
 							</p>
 							<p className="text-[9px] text-slate-600">
 								{h.width.toFixed(1)}% × {h.height.toFixed(1)}%
+							</p>
+						</div>
+					</button>
+				))}
+				{/* 缩放区域列表 */}
+				{zoomRegions.map((h, idx) => (
+					<button
+						key={h.id}
+						type="button"
+						onClick={() => onSelectHotspot(h.id)}
+						className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.06] hover:border-white/10 transition-all text-left"
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="#3B82F6"
+							strokeWidth="2"
+							className="shrink-0"
+						>
+							<circle cx="11" cy="11" r="7" />
+							<line x1="16.5" y1="16.5" x2="21" y2="21" />
+						</svg>
+						<div className="min-w-0 flex-1">
+							<p className="text-[11px] text-slate-300 truncate">
+								{h.label || `${t("properties.zoomRegionTitle") ?? "Zoom"} ${idx + 1}`}
+							</p>
+							<p className="text-[9px] text-slate-600">
+								{ZOOM_LEVEL_SCALES[h.zoomLevel ?? 3]}× · {h.width.toFixed(1)}% ×{" "}
+								{h.height.toFixed(1)}%
 							</p>
 						</div>
 					</button>
@@ -526,6 +565,72 @@ function HighlightAreaPanel({
 				>
 					<Trash2 className="w-3.5 h-3.5" />
 					{t("properties.deleteHighlight")}
+				</button>
+			</div>
+		</>
+	);
+}
+
+// ─── 缩放区域属性面板 ─────────────────────────────────────────────────────
+
+function ZoomRegionPanel({
+	hotspot,
+	onUpdateHotspot,
+	onRemoveHotspot,
+}: {
+	hotspot: Hotspot;
+	onUpdateHotspot: (hotspotId: string, updates: Partial<Hotspot>) => void;
+	onRemoveHotspot: (hotspotId: string) => void;
+}) {
+	const t = useScopedT("demobuilder");
+	const currentLevel = hotspot.zoomLevel ?? 3;
+
+	return (
+		<>
+			{/* 缩放区域标题 */}
+			<Section title={t("properties.zoomRegionTitle") ?? "Zoom Region"}>
+				<Field label={t("properties.zoomScale") ?? "Scale"}>
+					<div className="grid grid-cols-3 gap-1.5">
+						{ZOOM_LEVEL_OPTIONS.map((opt) => (
+							<button
+								key={opt.level}
+								type="button"
+								onClick={() => onUpdateHotspot(hotspot.id, { zoomLevel: opt.level })}
+								className={cn(
+									"px-1.5 py-1 rounded text-[10px] font-medium border transition-colors",
+									currentLevel === opt.level
+										? "border-[#3B82F6]/70 bg-[#3B82F6]/15 text-[#3B82F6]"
+										: "border-white/[0.06] bg-white/[0.035] text-slate-400 hover:bg-white/[0.075] hover:text-slate-200",
+								)}
+							>
+								{opt.label}
+							</button>
+						))}
+					</div>
+				</Field>
+				{/* 当前缩放倍率提示 */}
+				<p className="text-[9px] text-slate-500 mt-1">{ZOOM_LEVEL_SCALES[currentLevel]}× zoom</p>
+			</Section>
+
+			{/* 位置 / 尺寸信息（只读） */}
+			<Section title={t("properties.positionInfo")}>
+				<div className="grid grid-cols-2 gap-2">
+					<InfoChip label="X" value={`${hotspot.x.toFixed(1)}%`} />
+					<InfoChip label="Y" value={`${hotspot.y.toFixed(1)}%`} />
+					<InfoChip label="W" value={`${hotspot.width.toFixed(1)}%`} />
+					<InfoChip label="H" value={`${hotspot.height.toFixed(1)}%`} />
+				</div>
+			</Section>
+
+			{/* 删除按钮 */}
+			<div className="px-3 py-3">
+				<button
+					type="button"
+					onClick={() => onRemoveHotspot(hotspot.id)}
+					className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg hover:bg-red-950/50 transition-colors"
+				>
+					<Trash2 className="w-3.5 h-3.5" />
+					{t("properties.deleteZoomRegion") ?? "Delete Zoom Region"}
 				</button>
 			</div>
 		</>

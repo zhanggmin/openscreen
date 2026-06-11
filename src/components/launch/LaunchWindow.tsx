@@ -1,4 +1,12 @@
-import { Check, ChevronDown, Clapperboard, Columns3, Languages, Rows3 } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Clapperboard,
+	Columns3,
+	Languages,
+	Presentation,
+	Rows3,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BsPauseCircle, BsPlayCircle, BsRecordCircle } from "react-icons/bs";
@@ -901,15 +909,26 @@ export function LaunchWindow() {
 				)}
 
 				{!recording && (
-					<Tooltip content={t("tooltips.openStudio")}>
-						<button
-							data-testid="launch-open-studio-button"
-							className={`${hudIconBtnClasses} ${styles.electronNoDrag}`}
-							onClick={() => window.electronAPI.switchToEditor()}
-						>
-							<Clapperboard size={ICON_SIZE} className="text-white/60" />
-						</button>
-					</Tooltip>
+					<>
+						<Tooltip content={t("tooltips.openStudio")}>
+							<button
+								data-testid="launch-open-studio-button"
+								className={`${hudIconBtnClasses} ${styles.electronNoDrag}`}
+								onClick={() => window.electronAPI.switchToEditor()}
+							>
+								<Clapperboard size={ICON_SIZE} className="text-white/60" />
+							</button>
+						</Tooltip>
+						<Tooltip content={t("tooltips.openDemoDashboard")}>
+							<button
+								data-testid="launch-open-demo-dashboard-button"
+								className={`${hudIconBtnClasses} ${styles.electronNoDrag}`}
+								onClick={() => window.electronAPI.openDemoDashboard()}
+							>
+								<Presentation size={ICON_SIZE} className="text-white/60" />
+							</button>
+						</Tooltip>
+					</>
 				)}
 
 				{/* Right sidebar controls */}

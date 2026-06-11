@@ -241,7 +241,9 @@ export function DemoEditor() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [showExport, setShowExport] = useState(false);
-	const [annotationMode, setAnnotationMode] = useState<"cursor" | "highlight" | null>(null);
+	const [annotationMode, setAnnotationMode] = useState<"cursor" | "highlight" | "zoom" | null>(
+		null,
+	);
 
 	const projectIdFromUrl = new URLSearchParams(window.location.search).get("projectId");
 
@@ -423,6 +425,11 @@ export function DemoEditor() {
 		[],
 	);
 
+	const handleUpdateCursorTheme = useCallback(
+		(themeId: string) => dispatch({ type: "UPDATE_SETTINGS", settings: { cursorTheme: themeId } }),
+		[],
+	);
+
 	const handleExport = useCallback((format: "mp4" | "pdf") => {
 		if (format === "mp4") setShowExport(true);
 	}, []);
@@ -526,6 +533,7 @@ export function DemoEditor() {
 					onUpdateSound={handleUpdateSound}
 					onUpdateAspectRatio={handleUpdateAspectRatio}
 					onUpdateCursorType={handleUpdateCursorType}
+					onUpdateCursorTheme={handleUpdateCursorTheme}
 					onExport={handleExport}
 				/>
 
@@ -552,12 +560,14 @@ export function DemoEditor() {
 									canvasWidth={canvasWidth}
 									canvasHeight={canvasHeight}
 									cursorType={settings.defaultCursorType}
+									cursorTheme={settings.cursorTheme}
 									onSelectHotspot={handleSelectHotspot}
 									onAddHotspot={handleAddHotspot}
 									onUpdateHotspot={handleUpdateHotspot}
 									annotationMode={annotationMode}
 									onSetAnnotationMode={setAnnotationMode}
 									onAddCursorMarker={handleAddCursorMarker}
+									project={state.project!}
 									isPlaying={isPlaying}
 									onStepPlaybackDone={handleStepPlaybackDone}
 									onStopPlayback={handleStopPlayback}

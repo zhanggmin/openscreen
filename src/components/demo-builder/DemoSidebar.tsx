@@ -9,6 +9,8 @@ import cursorTextUrl from "@/assets/cursors/Cursor=Text-Cursor.svg";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
+import { getAssetPath } from "@/lib/assetPath";
+import { CURSOR_THEMES, DEFAULT_CURSOR_THEME_ID } from "@/lib/cursor/cursorThemes";
 import type {
 	CursorStyle,
 	DemoAppearance,
@@ -27,6 +29,23 @@ const CURSOR_OPTIONS: { id: CursorStyle; icon: string; labelKey: string }[] = [
 	{ id: "open-hand", icon: cursorOpenHandUrl, labelKey: "sidebar.cursorStyle.openHand" },
 ];
 
+/** 光标主题选项：内置默认 + cursorThemes.ts 中的所有主题。 */
+const CURSOR_THEME_OPTIONS: { id: string; name: string; previewUrl: string }[] = [
+	{
+		id: DEFAULT_CURSOR_THEME_ID,
+		name: "Default",
+		previewUrl: cursorDefaultUrl,
+	},
+	...CURSOR_THEMES.map((theme) => {
+		const arrowAsset = theme.assets.arrow ?? theme.assets.pointer;
+		return {
+			id: theme.id,
+			name: theme.name,
+			previewUrl: arrowAsset ? getAssetPath(arrowAsset.assetPath) : cursorDefaultUrl,
+		};
+	}),
+];
+
 type SidebarMode = "background" | "settings" | "sound" | "export";
 
 interface DemoSidebarProps {
@@ -36,6 +55,7 @@ interface DemoSidebarProps {
 	onUpdateSound: (sound: Partial<DemoSound>) => void;
 	onUpdateAspectRatio: (ratio: string) => void;
 	onUpdateCursorType: (cursorType: CursorStyle) => void;
+	onUpdateCursorTheme: (themeId: string) => void;
 	onExport: (format: "mp4" | "pdf") => void;
 }
 
@@ -103,6 +123,7 @@ export function DemoSidebar({
 	onUpdateSound,
 	onUpdateAspectRatio,
 	onUpdateCursorType,
+	onUpdateCursorTheme,
 	onExport,
 }: DemoSidebarProps) {
 	const t = useScopedT("demobuilder");
@@ -155,6 +176,7 @@ export function DemoSidebar({
 						settings={settings}
 						onUpdateAppearance={onUpdateAppearance}
 						onUpdateCursorType={onUpdateCursorType}
+						onUpdateCursorTheme={onUpdateCursorTheme}
 					/>
 				)}
 				{mode === "sound" && <SoundPanel settings={settings} onUpdateSound={onUpdateSound} />}
@@ -306,14 +328,17 @@ function SettingsPanel({
 	settings,
 	onUpdateAppearance,
 	onUpdateCursorType,
+	onUpdateCursorTheme,
 }: {
 	settings: ProjectSettings;
 	onUpdateAppearance: (appearance: Partial<DemoAppearance>) => void;
 	onUpdateCursorType: (cursorType: CursorStyle) => void;
+	onUpdateCursorTheme: (themeId: string) => void;
 }) {
 	const t = useScopedT("demobuilder");
 	const { appearance } = settings;
 	const currentCursor = settings.defaultCursorType ?? "default";
+	const currentTheme = settings.cursorTheme ?? DEFAULT_CURSOR_THEME_ID;
 
 	return (
 		<div className="px-1 space-y-2">
@@ -414,6 +439,42 @@ function SettingsPanel({
 									}}
 								/>
 								<span className="text-[9px] font-semibold leading-tight">{t(opt.labelKey)}</span>
+							</button>
+						);
+					})}
+				</div>
+			</div>
+
+			{/* 鼠标主题选择（包含点击/移动双状态） */}
+			<div className="p-2 rounded-lg editor-control-surface">
+				<div className="text-[10px] font-medium text-slate-300 mb-2">
+					{t("sidebar.cursorThemeTitle")}
+				</div>
+				<p className="text-[9px] text-slate-500 mb-2">{t("sidebar.cursorThemeHint")}</p>
+				<div className="flex flex-wrap gap-1.5">
+					{CURSOR_THEME_OPTIONS.map((option) => {
+						const isSelected = currentTheme === option.id;
+						return (
+							<button
+								type="button"
+								key={option.id}
+								title={option.name}
+								aria-label={option.name}
+								aria-pressed={isSelected}
+								onClick={() => onUpdateCursorTheme(option.id)}
+								className={cn(
+									"flex items-center justify-center w-8 h-8 rounded-lg border overflow-hidden transition-all duration-150 shadow-sm bg-white/5",
+									isSelected
+										? "border-[#34B27B] ring-1 ring-[#34B27B]/30"
+										: "border-white/10 hover:border-[#34B27B]/40 opacity-80 hover:opacity-100",
+								)}
+							>
+								<img
+									src={option.previewUrl}
+									alt=""
+									className="w-5 h-5 object-contain"
+									draggable={false}
+								/>
 							</button>
 						);
 					})}

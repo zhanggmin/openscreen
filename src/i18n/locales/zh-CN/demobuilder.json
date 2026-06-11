@@ -31,6 +31,8 @@
 		"shadow": "阴影",
 		"off": "关闭",
 		"cursorStyleTitle": "鼠标样式",
+		"cursorThemeTitle": "鼠标主题",
+		"cursorThemeHint": "选择主题后，移动时显示箭头光标，点击时显示手指光标",
 		"cursorStyle": {
 			"default": "默认",
 			"hand": "手指",
@@ -81,6 +83,7 @@
 		"drawHotspotHint": "拖动鼠标绘制热点区域",
 		"clickToPlaceCursor": "点击画面放置鼠标位置标注",
 		"dragToDrawHighlight": "在画面上拖动绘制高亮区域",
+		"dragToDrawZoomRegion": "在画面上拖动绘制缩放区域",
 		"playing": "播放中",
 		"stopPlayback": "停止"
 	},
@@ -89,6 +92,8 @@
 		"cursorAnnotationTitle": "点击画布放置鼠标位置标注，播放时会生成鼠标点击效果",
 		"highlightAnnotation": "高亮区域",
 		"highlightAnnotationTitle": "在画布上拖动选择一个矩形区域，播放时此区域将高亮显示",
+		"zoomAnnotation": "缩放区域",
+		"zoomAnnotationTitle": "在画布上拖动选择一个区域，播放时画面将放大到该区域",
 		"cancel": "取消"
 	},
 	"properties": {
@@ -162,6 +167,9 @@
 		"highlightAreaTitle": "高亮区域",
 		"deleteMarker": "删除标注",
 		"deleteHighlight": "删除高亮",
+		"deleteZoomRegion": "删除缩放区域",
+		"zoomRegionTitle": "缩放区域",
+		"zoomScale": "缩放倍率",
 		"positionInfo": "位置",
 		"sizeInfo": "尺寸",
 		"elementList": "元素列表",
@@ -204,6 +212,7 @@
 		"exporting": "正在导出...",
 		"resultSuccess": "导出完成：{{path}}",
 		"resultFailed": "导出失败：{{error}}",
-		"resultError": "导出错误：{{error}}"
+		"resultError": "导出错误：{{error}}",
+		"openFolder": "打开文件所在目录"
 	}
 }
