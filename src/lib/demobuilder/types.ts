@@ -208,6 +208,27 @@ export interface SubtitleStyle {
 	outlineWidth?: number;
 }
 
+/** TTS 语音数据，附加在字幕条目上 */
+export interface SubtitleAudio {
+	/** 音频文件路径或 blob URL */
+	url: string;
+	/** 语音时长（毫秒） */
+	duration: number;
+	/** TTS 服务商 */
+	provider: VoiceProvider;
+	/** 使用的音色 ID */
+	voiceId: string;
+}
+
+/** 字幕分组语音：多条字幕共享同一段 TTS 音频 */
+export interface SubtitleAudioGroup {
+	id: string;
+	/** 拼接后的完整文本（用于 TTS 合成的原始文本） */
+	text: string;
+	/** 合成的音频 */
+	audio: SubtitleAudio;
+}
+
 export interface Subtitle {
 	id: string;
 	/** Subtitle text content. */
@@ -221,6 +242,21 @@ export interface Subtitle {
 	/** Vertical position of the subtitle on the canvas. */
 	position: SubtitlePosition;
 	style: SubtitleStyle;
+	/**
+	 * 绑定的热点 ID（可选）。
+	 * 播放时字幕显示期间同步触发对应 hotspot 的动作（高亮/光标/点击）。
+	 */
+	hotspotId?: string | null;
+	/**
+	 * TTS 语音数据（可选）。
+	 * 有语音时 end - start 应等于 audio.duration，字幕时长跟随语音。
+	 */
+	audio?: SubtitleAudio | null;
+	/**
+	 * 所属分组 ID（可选）。
+	 * 同一组字幕共享一段 TTS 音频（完整句子），系统按字符比例分配时长。
+	 */
+	groupId?: string | null;
 }
 
 // ─── Voice (TTS) ──────────────────────────────────────────────────────────────
@@ -261,6 +297,8 @@ export interface Step {
 	cursor: CursorAnimation;
 	/** Subtitle overlays for this step. */
 	subtitles: Subtitle[];
+	/** 字幕分组语音数据（多条字幕共享一段 TTS 音频） */
+	subtitleAudioGroups: SubtitleAudioGroup[];
 	/** AI-generated voice narration for this step. */
 	voice: Voice | null;
 	/** Transition effect when moving to the next step. */
@@ -418,3 +456,20 @@ export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
 	outlineColor: "#000000",
 	outlineWidth: 0,
 };
+
+/** 创建一条带默认值的空字幕 */
+export function createDefaultSubtitle(startMs = 0, durationMs = 3000): Subtitle {
+	return {
+		id: crypto.randomUUID(),
+		text: "",
+		start: startMs,
+		end: startMs + durationMs,
+		fontFamily: "system-ui",
+		fontSize: 16,
+		position: "bottom",
+		style: { ...DEFAULT_SUBTITLE_STYLE },
+		hotspotId: null,
+		audio: null,
+		groupId: null,
+	};
+}

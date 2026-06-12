@@ -27,7 +27,6 @@ import type {
 	DemoBackground,
 	Hotspot,
 	Screenshot,
-	Subtitle,
 	TransitionType,
 } from "@/lib/demobuilder/types";
 import { ZOOM_LEVEL_SCALES } from "@/lib/demobuilder/types";
@@ -471,44 +470,6 @@ function CursorOverlay({
 	);
 }
 
-// ─── 子组件：字幕 ────────────────────────────────────────────────────────────
-
-function SubtitleOverlay({ subtitle }: { subtitle: Subtitle }) {
-	const posStyle: React.CSSProperties = {
-		position: "absolute",
-		left: 0,
-		right: 0,
-		display: "flex",
-		justifyContent: "center",
-		pointerEvents: "none",
-		padding: "0 16px",
-		zIndex: 40,
-	};
-
-	if (subtitle.position === "top") posStyle.top = "5%";
-	else if (subtitle.position === "center") posStyle.top = "45%";
-	else posStyle.bottom = "5%";
-
-	return (
-		<div style={posStyle}>
-			<span
-				style={{
-					padding: "6px 12px",
-					borderRadius: 4,
-					textAlign: "center",
-					fontSize: subtitle.fontSize,
-					fontFamily: subtitle.fontFamily,
-					color: subtitle.style.color,
-					backgroundColor: subtitle.style.backgroundColor,
-					opacity: subtitle.style.opacity,
-				}}
-			>
-				{subtitle.text}
-			</span>
-		</div>
-	);
-}
-
 // ─── 子组件：转场动画层 ──────────────────────────────────────────────────────
 
 function TransitionLayer({
@@ -735,11 +696,6 @@ export function DemoFrameView({
 					isClicking={state.clickEffect !== null}
 				/>
 			)}
-
-			{/* 字幕 */}
-			{state.visibleSubtitles.map((sub) => (
-				<SubtitleOverlay key={sub.id} subtitle={sub} />
-			))}
 
 			{/* 转场 */}
 			{state.transition && (

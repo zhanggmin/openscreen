@@ -14,6 +14,7 @@ import type {
 import { isCursorMarker, isZoomRegion, ZOOM_LEVEL_SCALES } from "@/lib/demobuilder/types";
 import { resolveImageWallpaperUrl } from "@/lib/wallpaper";
 import { DemoFrameView } from "./DemoFrameView";
+import { SubtitleBar } from "./SubtitleBar";
 
 interface CanvasAreaProps {
 	screenshot: Screenshot | null;
@@ -367,6 +368,43 @@ function CanvasAreaInner({
 		}
 	}, [isPlaying]);
 
+	// ── 字幕音频播放 ──
+	const subtitleAudioRef = useRef<HTMLAudioElement | null>(null);
+	const lastAudioUrlRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const audioUrl = frameState?.activeSubtitleAudio ?? null;
+		if (audioUrl === lastAudioUrlRef.current) return;
+		lastAudioUrlRef.current = audioUrl;
+
+		// 停止当前音频
+		if (subtitleAudioRef.current) {
+			subtitleAudioRef.current.pause();
+			subtitleAudioRef.current.currentTime = 0;
+			subtitleAudioRef.current = null;
+		}
+
+		// 播放新音频
+		if (audioUrl) {
+			const audio = new Audio(audioUrl);
+			audio.volume = 0.8;
+			audio.play().catch(() => {
+				// 自动播放被浏览器阻止，忽略错误
+			});
+			subtitleAudioRef.current = audio;
+		}
+	}, [frameState?.activeSubtitleAudio]);
+
+	// 停止播放时清理音频
+	useEffect(() => {
+		if (!isPlaying && subtitleAudioRef.current) {
+			subtitleAudioRef.current.pause();
+			subtitleAudioRef.current.currentTime = 0;
+			subtitleAudioRef.current = null;
+			lastAudioUrlRef.current = null;
+		}
+	}, [isPlaying]);
+
 	// Escape key to stop playback
 	useEffect(() => {
 		if (!isPlaying) return;
@@ -596,6 +634,10 @@ function CanvasAreaInner({
 							</div>
 						)}
 					</div>
+
+					{/* ── 字幕层 — 固定在画布底部，不受截图缩放/转场影响 ── */}
+					{isPlaying &&
+						frameState?.visibleSubtitles.map((sub) => <SubtitleBar key={sub.id} subtitle={sub} />)}
 				</div>
 			</div>
 		</div>

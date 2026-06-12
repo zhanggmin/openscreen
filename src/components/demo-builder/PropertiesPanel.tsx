@@ -7,16 +7,31 @@
  *   - 鼠标标注 → 标签、浮动说明、动画、删除
  *   - 高亮区域 → 标签、样式、颜色、删除
  */
-import { Circle, MousePointerClick, Square, Trash2 } from "lucide-react";
-import { useScopedT } from "@/contexts/I18nContext";
-import type { Hotspot, Screenshot, Step } from "@/lib/demobuilder/types";
+
 import {
+	Circle,
+	Link2,
+	Loader2,
+	MousePointerClick,
+	Play,
+	Plus,
+	Square,
+	Trash2,
+	Unlink,
+	Volume2,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
+import type { Hotspot, Screenshot, Step, Subtitle } from "@/lib/demobuilder/types";
+import {
+	createDefaultSubtitle,
 	isCursorMarker,
 	isZoomRegion,
 	ZOOM_LEVEL_OPTIONS,
 	ZOOM_LEVEL_SCALES,
 } from "@/lib/demobuilder/types";
 import { cn } from "@/lib/utils";
+import { useSubtitleTTS } from "./useSubtitleTTS";
 
 // ─── 高亮颜色预设 ───────────────────────────────────────────────────────────
 const HIGHLIGHT_COLORS = [
@@ -185,41 +200,7 @@ function StepInfoPanel({
 			</Section>
 
 			{/* 字幕 */}
-			<Section title={t("properties.subtitleSection")}>
-				{(() => {
-					const sub = step.subtitles[0];
-					return (
-						<Field label={t("properties.subtitleText")}>
-							<textarea
-								value={sub?.text ?? ""}
-								onChange={(e) => {
-									const existing = sub;
-									const newSub = e.target.value
-										? {
-												id: existing?.id ?? crypto.randomUUID(),
-												text: e.target.value,
-												start: existing?.start ?? 0,
-												end: existing?.end ?? 3000,
-												fontFamily: existing?.fontFamily ?? "system-ui",
-												fontSize: existing?.fontSize ?? 16,
-												position: existing?.position ?? "bottom",
-												style: existing?.style ?? {
-													color: "#ffffff",
-													backgroundColor: "rgba(0,0,0,0.6)",
-													opacity: 1,
-												},
-											}
-										: null;
-									onUpdateStep(step.id, { subtitles: newSub ? [newSub] : [] });
-								}}
-								rows={2}
-								placeholder={t("properties.subtitlePlaceholder")}
-								className="input-field resize-none"
-							/>
-						</Field>
-					);
-				})()}
-			</Section>
+			<SubtitleSection step={step} onUpdateStep={onUpdateStep} />
 
 			{/* 转场特效设置 */}
 			<Section title={t("properties.transitionSection")}>
@@ -634,6 +615,546 @@ function ZoomRegionPanel({
 				</button>
 			</div>
 		</>
+	);
+}
+
+// ─── 字幕编辑器（多条字幕管理 + 分组 + TTS） ───────────────────────────────────
+
+/** 组的颜色池，循环使用 */
+const GROUP_COLORS = ["#34B27B", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+
+function SubtitleSection({
+	step,
+	onUpdateStep,
+}: {
+	step: Step;
+	onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
+}) {
+	const t = useScopedT("demobuilder");
+	const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+	const subtitles = step.subtitles;
+	const audioGroups = step.subtitleAudioGroups ?? [];
+
+	const tts = useSubtitleTTS();
+
+	// 为每个 groupId 分配一个稳定的颜色索引
+	const groupIdColorMap = useMemo(() => {
+		const map = new Map<string, number>();
+		let idx = 0;
+		for (const sub of subtitles) {
+			if (sub.groupId && !map.has(sub.groupId)) {
+				map.set(sub.groupId, idx % GROUP_COLORS.length);
+				idx++;
+			}
+		}
+		return map;
+	}, [subtitles]);
+
+	const handleAddSubtitle = () => {
+		const lastEnd = subtitles.length > 0 ? Math.max(...subtitles.map((s) => s.end)) : 0;
+		const newSub = createDefaultSubtitle(lastEnd, 3000);
+		onUpdateStep(step.id, { subtitles: [...subtitles, newSub] });
+		setSelectedSubId(newSub.id);
+	};
+
+	const handleUpdateSubtitle = (subId: string, updates: Partial<Subtitle>) => {
+		onUpdateStep(step.id, {
+			subtitles: subtitles.map((s) => (s.id === subId ? { ...s, ...updates } : s)),
+		});
+	};
+
+	const handleRemoveSubtitle = (subId: string) => {
+		const sub = subtitles.find((s) => s.id === subId);
+		let newGroups = audioGroups;
+		// 如果删除的是组内字幕，检查组是否只剩一条，是则清理组
+		if (sub?.groupId) {
+			const remaining = subtitles.filter((s) => s.groupId === sub.groupId && s.id !== subId);
+			if (remaining.length <= 1) {
+				newGroups = audioGroups.filter((g) => g.id !== sub.groupId);
+				// 清除剩余字幕的 groupId
+				const updatedSubs = subtitles
+					.filter((s) => s.id !== subId)
+					.map((s) => (s.groupId === sub.groupId ? { ...s, groupId: null } : s));
+				onUpdateStep(step.id, { subtitles: updatedSubs, subtitleAudioGroups: newGroups });
+				if (selectedSubId === subId) setSelectedSubId(null);
+				return;
+			}
+		}
+		onUpdateStep(step.id, {
+			subtitles: subtitles.filter((s) => s.id !== subId),
+			subtitleAudioGroups: newGroups,
+		});
+		if (selectedSubId === subId) setSelectedSubId(null);
+	};
+
+	const handleMoveSubtitle = (subId: string, direction: "up" | "down") => {
+		const idx = subtitles.findIndex((s) => s.id === subId);
+		if (idx < 0) return;
+		const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+		if (swapIdx < 0 || swapIdx >= subtitles.length) return;
+		const newSubs = [...subtitles];
+		[newSubs[idx], newSubs[swapIdx]] = [newSubs[swapIdx], newSubs[idx]];
+		onUpdateStep(step.id, { subtitles: newSubs });
+	};
+
+	// 将当前字幕与下一条字幕合并为一组
+	const handleJoinGroup = (subId: string) => {
+		const idx = subtitles.findIndex((s) => s.id === subId);
+		if (idx < 0 || idx >= subtitles.length - 1) return;
+		const current = subtitles[idx];
+		const next = subtitles[idx + 1];
+		// 如果当前字幕已在组中，把下一条也拉进同组；否则新建一个组
+		const groupId = current.groupId ?? crypto.randomUUID();
+		const newSubs = subtitles.map((s) => {
+			if (s.id === current.id || s.id === next.id) {
+				return { ...s, groupId };
+			}
+			return s;
+		});
+		onUpdateStep(step.id, { subtitles: newSubs });
+	};
+
+	// 将字幕从组中移除
+	const handleSplitFromGroup = (subId: string) => {
+		const sub = subtitles.find((s) => s.id === subId);
+		if (!sub?.groupId) return;
+		const groupId = sub.groupId;
+		const remaining = subtitles.filter((s) => s.groupId === groupId && s.id !== subId);
+		let newGroups = audioGroups;
+		const updatedSubs = subtitles.map((s) => {
+			if (s.id === subId) return { ...s, groupId: null };
+			// 如果组内只剩一条，也清除它的 groupId 和对应音频组
+			if (s.groupId === groupId && remaining.length <= 1) {
+				return { ...s, groupId: null };
+			}
+			return s;
+		});
+		if (remaining.length <= 1) {
+			newGroups = audioGroups.filter((g) => g.id !== groupId);
+		}
+		onUpdateStep(step.id, { subtitles: updatedSubs, subtitleAudioGroups: newGroups });
+	};
+
+	// 为字幕组生成 TTS
+	const handleGenerateGroupTTS = async (groupId: string) => {
+		const groupSubs = subtitles.filter((s) => s.groupId === groupId);
+		if (groupSubs.length === 0) return;
+
+		const result = await tts.generateForGroup(groupId, groupSubs);
+		if (!result) return;
+
+		const { audioGroup, updatedSubtitles } = result;
+		// 替换对应的字幕（更新 start/end），并更新/添加 audioGroup
+		const newSubs = subtitles.map((s) => {
+			const updated = updatedSubtitles.find((u) => u.id === s.id);
+			return updated ?? s;
+		});
+		const existingIdx = audioGroups.findIndex((g) => g.id === groupId);
+		const newGroups =
+			existingIdx >= 0
+				? audioGroups.map((g, i) => (i === existingIdx ? audioGroup : g))
+				: [...audioGroups, audioGroup];
+		onUpdateStep(step.id, { subtitles: newSubs, subtitleAudioGroups: newGroups });
+	};
+
+	// 为单条字幕生成 TTS
+	const handleGenerateSingleTTS = async (sub: Subtitle) => {
+		const result = await tts.generateForSingle(sub);
+		if (!result) return;
+		const { audio } = result;
+		handleUpdateSubtitle(sub.id, {
+			audio,
+			end: sub.start + audio.duration,
+		});
+	};
+
+	// 移除字幕组语音
+	const handleRemoveGroupAudio = (groupId: string) => {
+		onUpdateStep(step.id, {
+			subtitleAudioGroups: audioGroups.filter((g) => g.id !== groupId),
+		});
+	};
+
+	const selectedSub = subtitles.find((s) => s.id === selectedSubId);
+
+	// 收集唯一的分组（保持首次出现顺序）
+	const groups = useMemo(() => {
+		const seen = new Set<string>();
+		const result: { groupId: string; subs: Subtitle[] }[] = [];
+		for (const sub of subtitles) {
+			if (sub.groupId && !seen.has(sub.groupId)) {
+				seen.add(sub.groupId);
+				result.push({
+					groupId: sub.groupId,
+					subs: subtitles.filter((s) => s.groupId === sub.groupId),
+				});
+			}
+		}
+		return result;
+	}, [subtitles]);
+
+	return (
+		<Section title={t("properties.subtitleSection")}>
+			{/* 字幕列表 */}
+			{subtitles.length === 0 && (
+				<p className="text-[10px] text-slate-600">{t("properties.noSubtitles")}</p>
+			)}
+			{subtitles.map((sub, idx) => {
+				const groupColorIdx = sub.groupId ? groupIdColorMap.get(sub.groupId) : undefined;
+				const groupColor = groupColorIdx !== undefined ? GROUP_COLORS[groupColorIdx] : undefined;
+				const groupInfo = sub.groupId ? groups.find((g) => g.groupId === sub.groupId) : null;
+				const groupAudio = sub.groupId ? audioGroups.find((g) => g.id === sub.groupId) : null;
+
+				return (
+					<div key={sub.id}>
+						<div
+							className={cn(
+								"flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all",
+								selectedSubId === sub.id
+									? "border-[#34B27B]/50 bg-[#34B27B]/10"
+									: "border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.06]",
+							)}
+							style={groupColor ? { borderLeft: `3px solid ${groupColor}` } : undefined}
+						>
+							<button
+								type="button"
+								onClick={() => setSelectedSubId(selectedSubId === sub.id ? null : sub.id)}
+								className="flex-1 min-w-0 text-left"
+							>
+								<p className="text-[11px] text-slate-300 truncate">
+									{sub.text || t("properties.subtitleEmpty")}
+								</p>
+								<p className="text-[9px] text-slate-600">
+									#{idx + 1} · {(sub.start / 1000).toFixed(1)}s - {(sub.end / 1000).toFixed(1)}s
+									{groupAudio
+										? ` · ${t("properties.subtitleTTSGroup")}`
+										: sub.audio
+											? ` · ${(sub.audio.duration / 1000).toFixed(1)}s`
+											: ""}
+								</p>
+							</button>
+							<div className="flex items-center gap-0.5 shrink-0">
+								{/* 分组：链接到下一条字幕 */}
+								{idx < subtitles.length - 1 && (
+									<button
+										type="button"
+										title={t("properties.subtitleJoinGroup")}
+										onClick={() => handleJoinGroup(sub.id)}
+										className="p-0.5 text-slate-600 hover:text-blue-400 transition-colors"
+									>
+										<Link2 className="w-3 h-3" />
+									</button>
+								)}
+								{sub.groupId && (
+									<button
+										type="button"
+										title={t("properties.subtitleSplitGroup")}
+										onClick={() => handleSplitFromGroup(sub.id)}
+										className="p-0.5 text-blue-400 hover:text-slate-300 transition-colors"
+									>
+										<Unlink className="w-3 h-3" />
+									</button>
+								)}
+								<button
+									type="button"
+									onClick={() => handleMoveSubtitle(sub.id, "up")}
+									disabled={idx === 0}
+									className="p-0.5 text-slate-600 hover:text-slate-300 disabled:opacity-30 transition-colors"
+								>
+									<svg
+										width="10"
+										height="10"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+									>
+										<path d="M18 15l-6-6-6 6" />
+									</svg>
+								</button>
+								<button
+									type="button"
+									onClick={() => handleMoveSubtitle(sub.id, "down")}
+									disabled={idx === subtitles.length - 1}
+									className="p-0.5 text-slate-600 hover:text-slate-300 disabled:opacity-30 transition-colors"
+								>
+									<svg
+										width="10"
+										height="10"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+									>
+										<path d="M6 9l6 6 6-6" />
+									</svg>
+								</button>
+								<button
+									type="button"
+									onClick={() => handleRemoveSubtitle(sub.id)}
+									className="p-0.5 text-slate-600 hover:text-red-400 transition-colors"
+								>
+									<Trash2 className="w-3 h-3" />
+								</button>
+							</div>
+						</div>
+
+						{/* 组操作栏：在第一组成员处显示 */}
+						{groupInfo && groupInfo.subs[0]?.id === sub.id && (
+							<div
+								className="ml-3 mt-1 mb-1 px-2 py-1 rounded border flex items-center gap-2"
+								style={{
+									borderColor: `${groupColor}33`,
+									backgroundColor: `${groupColor}0D`,
+								}}
+							>
+								<Volume2 className="w-3 h-3 shrink-0" style={{ color: groupColor }} />
+								<span className="text-[9px] text-slate-400 flex-1">
+									{t("properties.subtitleGroupLabel", {
+										name: groupInfo.subs.map((s) => s.text.slice(0, 6)).join(" + "),
+									})}
+								</span>
+								{groupAudio ? (
+									<div className="flex items-center gap-1">
+										<span className="text-[9px] text-slate-500">
+											{(groupAudio.audio.duration / 1000).toFixed(1)}s
+										</span>
+										<button
+											type="button"
+											onClick={() => tts.previewAudio(groupAudio.audio.url)}
+											className="p-0.5 text-slate-400 hover:text-green-400 transition-colors"
+										>
+											{tts.isPreviewing ? (
+												<Loader2 className="w-3 h-3 animate-spin" />
+											) : (
+												<Play className="w-3 h-3" />
+											)}
+										</button>
+										<button
+											type="button"
+											onClick={() => handleRemoveGroupAudio(groupInfo.groupId)}
+											className="p-0.5 text-red-400 hover:text-red-300 transition-colors"
+										>
+											<Trash2 className="w-3 h-3" />
+										</button>
+									</div>
+								) : (
+									<button
+										type="button"
+										disabled={tts.isGenerating || !tts.isAvailable}
+										onClick={() => handleGenerateGroupTTS(groupInfo.groupId)}
+										className="flex items-center gap-1 text-[9px] text-blue-400 hover:text-blue-300 disabled:opacity-40 transition-colors"
+									>
+										{tts.isGenerating ? (
+											<Loader2 className="w-3 h-3 animate-spin" />
+										) : (
+											<Volume2 className="w-3 h-3" />
+										)}
+										{t("properties.subtitleTTSGroup")}
+									</button>
+								)}
+							</div>
+						)}
+					</div>
+				);
+			})}
+
+			{/* 添加字幕按钮 */}
+			<button
+				type="button"
+				onClick={handleAddSubtitle}
+				className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-medium text-[#34B27B] bg-[#34B27B]/10 border border-[#34B27B]/20 rounded-lg hover:bg-[#34B27B]/20 transition-colors"
+			>
+				<Plus className="w-3.5 h-3.5" />
+				{t("properties.addSubtitle")}
+			</button>
+
+			{/* 选中字幕的编辑区 */}
+			{selectedSub && (
+				<div className="mt-2 p-2 rounded-lg border border-white/[0.08] bg-white/[0.02] space-y-2">
+					<Field label={t("properties.subtitleText")}>
+						<textarea
+							value={selectedSub.text}
+							onChange={(e) => handleUpdateSubtitle(selectedSub.id, { text: e.target.value })}
+							rows={2}
+							placeholder={t("properties.subtitlePlaceholder")}
+							className="input-field resize-none"
+						/>
+					</Field>
+					<div className="grid grid-cols-2 gap-2">
+						<Field label={t("properties.subtitleStartTime")}>
+							<input
+								type="number"
+								min={0}
+								step={100}
+								value={selectedSub.start}
+								onChange={(e) =>
+									handleUpdateSubtitle(selectedSub.id, {
+										start: Math.max(0, Number.parseInt(e.target.value, 10) || 0),
+									})
+								}
+								className="input-field"
+							/>
+						</Field>
+						<Field label={t("properties.subtitleEndTime")}>
+							<input
+								type="number"
+								min={0}
+								step={100}
+								value={selectedSub.end}
+								onChange={(e) =>
+									handleUpdateSubtitle(selectedSub.id, {
+										end: Math.max(0, Number.parseInt(e.target.value, 10) || 0),
+									})
+								}
+								className="input-field"
+							/>
+						</Field>
+					</div>
+					<Field label={t("properties.subtitleFontSize")}>
+						<input
+							type="number"
+							min={10}
+							max={48}
+							value={selectedSub.fontSize}
+							onChange={(e) =>
+								handleUpdateSubtitle(selectedSub.id, {
+									fontSize: Math.max(10, Math.min(48, Number.parseInt(e.target.value, 10) || 16)),
+								})
+							}
+							className="input-field"
+						/>
+					</Field>
+					<div className="grid grid-cols-2 gap-2">
+						<Field label={t("properties.subtitleTextColor")}>
+							<input
+								type="color"
+								value={selectedSub.style.color}
+								onChange={(e) =>
+									handleUpdateSubtitle(selectedSub.id, {
+										style: { ...selectedSub.style, color: e.target.value },
+									})
+								}
+								className="w-full h-7 rounded cursor-pointer border border-white/10"
+							/>
+						</Field>
+						<Field label={t("properties.subtitleBgColor")}>
+							<input
+								type="color"
+								value={
+									selectedSub.style.backgroundColor.startsWith("rgba")
+										? "#000000"
+										: selectedSub.style.backgroundColor
+								}
+								onChange={(e) =>
+									handleUpdateSubtitle(selectedSub.id, {
+										style: { ...selectedSub.style, backgroundColor: e.target.value },
+									})
+								}
+								className="w-full h-7 rounded cursor-pointer border border-white/10"
+							/>
+						</Field>
+					</div>
+					<Field label={t("properties.subtitleBindHotspot")}>
+						<select
+							value={selectedSub.hotspotId ?? ""}
+							onChange={(e) =>
+								handleUpdateSubtitle(selectedSub.id, {
+									hotspotId: e.target.value || null,
+								})
+							}
+							className="input-field"
+						>
+							<option value="">{t("properties.subtitleNoBind")}</option>
+							{(() => {
+								const zooms = step.hotspots.filter((h) => isZoomRegion(h));
+								const highlights = step.hotspots.filter(
+									(h) => !isCursorMarker(h) && !isZoomRegion(h),
+								);
+								const cursors = step.hotspots.filter((h) => isCursorMarker(h));
+								const renderOpts = (list: Hotspot[]) =>
+									list.map((h) => (
+										<option key={h.id} value={h.id}>
+											{h.label || `${h.id.slice(0, 6)}...`}
+										</option>
+									));
+								return (
+									<>
+										{zooms.length > 0 && (
+											<optgroup label={t("properties.subtitleGroupZoom")}>
+												{renderOpts(zooms)}
+											</optgroup>
+										)}
+										{highlights.length > 0 && (
+											<optgroup label={t("properties.subtitleGroupHighlight")}>
+												{renderOpts(highlights)}
+											</optgroup>
+										)}
+										{cursors.length > 0 && (
+											<optgroup label={t("properties.subtitleGroupCursor")}>
+												{renderOpts(cursors)}
+											</optgroup>
+										)}
+									</>
+								);
+							})()}
+						</select>
+					</Field>
+
+					{/* 单条字幕 TTS（仅对未分组的字幕显示） */}
+					{!selectedSub.groupId && (
+						<div className="flex items-center gap-2">
+							{selectedSub.audio ? (
+								<div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+									<span>TTS: {(selectedSub.audio.duration / 1000).toFixed(1)}s</span>
+									<button
+										type="button"
+										onClick={() => tts.previewAudio(selectedSub.audio!.url)}
+										className="text-green-400 hover:text-green-300 transition-colors"
+									>
+										{tts.isPreviewing ? (
+											<Loader2 className="w-3 h-3 animate-spin" />
+										) : (
+											<Play className="w-3 h-3" />
+										)}
+									</button>
+									<button
+										type="button"
+										onClick={() => handleUpdateSubtitle(selectedSub.id, { audio: null })}
+										className="text-red-400 hover:text-red-300 underline transition-colors"
+									>
+										{t("properties.subtitleRemoveAudio")}
+									</button>
+								</div>
+							) : (
+								<button
+									type="button"
+									disabled={tts.isGenerating || !tts.isAvailable || !selectedSub.text.trim()}
+									onClick={() => handleGenerateSingleTTS(selectedSub)}
+									className="flex items-center gap-1 text-[9px] text-blue-400 hover:text-blue-300 disabled:opacity-40 transition-colors"
+								>
+									{tts.isGenerating ? (
+										<Loader2 className="w-3 h-3 animate-spin" />
+									) : (
+										<Volume2 className="w-3 h-3" />
+									)}
+									{tts.isAvailable
+										? t("properties.subtitleTTSSingle")
+										: t("properties.subtitleTTSNoEngine")}
+								</button>
+							)}
+						</div>
+					)}
+
+					{/* 分组字幕提示 */}
+					{selectedSub.groupId && (
+						<p className="text-[9px] text-slate-600 italic">
+							{t("properties.subtitleTTSGroupHint")}
+						</p>
+					)}
+				</div>
+			)}
+		</Section>
 	);
 }
 

@@ -52,6 +52,10 @@ function migrateProject(project: DemoProject): DemoProject {
 	const defaults = DEFAULT_PROJECT_SETTINGS;
 	return {
 		...project,
+		steps: project.steps.map((step) => ({
+			...step,
+			subtitleAudioGroups: step.subtitleAudioGroups ?? [],
+		})),
 		settings: {
 			...defaults,
 			...project.settings,
@@ -296,6 +300,7 @@ export function DemoEditor() {
 			hotspots: [],
 			cursor: { ...DEFAULT_CURSOR_ANIMATION },
 			subtitles: [],
+			subtitleAudioGroups: [],
 			voice: null,
 			transition: { ...DEFAULT_TRANSITION },
 		};

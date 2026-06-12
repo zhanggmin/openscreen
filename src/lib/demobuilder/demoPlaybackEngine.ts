@@ -89,6 +89,9 @@ export interface DemoFrameState {
 	/** 当前可见字幕 */
 	visibleSubtitles: Subtitle[];
 
+	/** 当前应播放的字幕音频 URL（有 TTS 时），用于驱动音频播放 */
+	activeSubtitleAudio: string | null;
+
 	/** 浮动说明气泡 */
 	tooltip: { text: string; x: number; y: number } | null;
 
@@ -231,9 +234,41 @@ function computeStepTimelines(project: DemoProject): StepTimeline[] {
 		// 2) 对每个高亮和光标，判断其几何中心是否落在某个缩放区内
 		//    - 落在缩放区内 → 嵌套播放（在该缩放区的 hold 期）
 		//    - 否则 → 顶层串行播放
-		const allHighlights = step.hotspots.filter((h) => !isCursorMarker(h) && !isZoomRegion(h));
-		const zoomAreas = step.hotspots.filter(isZoomRegion);
-		const allCursors = step.hotspots.filter(isCursorMarker);
+		// 3) 被字幕绑定的热点从串行流中排除，改为字幕驱动时序
+		const subtitleBoundIds = new Set(
+			step.subtitles.filter((s) => s.hotspotId).map((s) => s.hotspotId!),
+		);
+
+		// 4) 扩展排除集合：将几何上嵌套在字幕绑定缩放区内的热点也排除出串行流，
+		//    避免在串行播放和字幕驱动缩放中各播放一次
+		const subtitleExcludedIds = new Set(subtitleBoundIds);
+		for (const sub of step.subtitles) {
+			if (!sub.hotspotId) continue;
+			const zoom = step.hotspots.find((h) => h.id === sub.hotspotId && isZoomRegion(h));
+			if (!zoom) continue;
+			const zx1 = zoom.x;
+			const zy1 = zoom.y;
+			const zx2 = zoom.x + zoom.width;
+			const zy2 = zoom.y + zoom.height;
+			for (const h of step.hotspots) {
+				if (h.id === zoom.id || subtitleExcludedIds.has(h.id)) continue;
+				const cx = h.x + h.width / 2;
+				const cy = h.y + h.height / 2;
+				if (cx >= zx1 && cx <= zx2 && cy >= zy1 && cy <= zy2) {
+					subtitleExcludedIds.add(h.id);
+				}
+			}
+		}
+
+		const allHighlights = step.hotspots.filter(
+			(h) => !isCursorMarker(h) && !isZoomRegion(h) && !subtitleExcludedIds.has(h.id),
+		);
+		const zoomAreas = step.hotspots.filter(
+			(h) => isZoomRegion(h) && !subtitleExcludedIds.has(h.id),
+		);
+		const allCursors = step.hotspots.filter(
+			(h) => isCursorMarker(h) && !subtitleExcludedIds.has(h.id),
+		);
 
 		// 几何归类：每个缩放区收集自己的嵌套高亮和光标
 		const zoneHighlights = new Map<string, Hotspot[]>();
@@ -398,16 +433,154 @@ function computeStepTimelines(project: DemoProject): StepTimeline[] {
 		}
 
 		// 兼容旧字段：基于第一个/最后一个光标的边界。computeFrameState 会用 per-marker 判断显示窗口。
-		const cursorShowTime =
+		let cursorShowTime =
 			cursorTimings.length > 0
 				? cursorTimings[0].moveStart - T.CURSOR_SHOW_DELAY_MS
 				: Number.POSITIVE_INFINITY;
-		const cursorHideTime =
+		let cursorHideTime =
 			cursorTimings.length > 0
 				? cursorTimings[cursorTimings.length - 1].clickEnd +
 					T.HOLD_AFTER_CLICK_MS +
 					T.HOLD_BETWEEN_MS
 				: Number.POSITIVE_INFINITY;
+
+		// ── 字幕驱动的热点时序 ──
+		// 被字幕绑定的热点在字幕 start 时刻触发，而非按串行顺序
+		if (step.subtitles.length > 0) {
+			for (const sub of step.subtitles) {
+				if (!sub.hotspotId) continue;
+				const hotspot = step.hotspots.find((h) => h.id === sub.hotspotId);
+				if (!hotspot) continue;
+
+				const subStart = sub.start;
+
+				if (isCursorMarker(hotspot)) {
+					// 字幕绑定的光标标记：在字幕开始时移动 + 点击
+					const target = hotspot.mouseTarget ?? {
+						x: hotspot.x + hotspot.width / 2,
+						y: hotspot.y + hotspot.height / 2,
+					};
+					const prevCursorPos = lastCursorTo ?? step.cursor.startPosition;
+					const moveStart = subStart + T.CURSOR_SHOW_DELAY_MS;
+					const moveEnd = moveStart + step.cursor.movementDuration;
+					const clickStart = moveEnd;
+					const clickEnd = clickStart + T.CLICK_EFFECT_MS;
+
+					cursorTimings.push({
+						from: prevCursorPos,
+						to: target,
+						moveStart,
+						moveEnd,
+						clickStart,
+						clickEnd,
+						hotspot,
+					});
+					lastCursorTo = target;
+				} else if (!isZoomRegion(hotspot)) {
+					// 字幕绑定的高亮区域：在字幕期间显示
+					const duration =
+						hotspot.highlightDuration ??
+						Math.max(T.DEFAULT_HIGHLIGHT_DURATION_MS, sub.end - sub.start);
+					const entry: HighlightTimeEntry = {
+						hotspot,
+						fadeInStart: subStart,
+						fullAt: subStart + T.HIGHLIGHT_FADE_MS,
+						fadeOutStart: subStart + T.HIGHLIGHT_FADE_MS + duration,
+						fadeOutEnd: subStart + T.HIGHLIGHT_FADE_MS + duration + T.HIGHLIGHT_FADE_MS,
+					};
+					highlightTimings.push(entry);
+				}
+			}
+
+			// ── 字幕驱动的缩放区域时序 ──
+			// 被字幕绑定的缩放区域在字幕期间执行缩放动画（zoom-in → hold → zoom-out）
+			// 几何上落在该缩放区内的嵌套高亮/光标也在字幕期间同步播放
+			for (const sub of step.subtitles) {
+				if (!sub.hotspotId) continue;
+				const hotspot = step.hotspots.find((h) => h.id === sub.hotspotId);
+				if (!hotspot || !isZoomRegion(hotspot)) continue;
+
+				const subStart = sub.start;
+
+				const zoomInStart = subStart;
+				const zoomInEnd = zoomInStart + T.ZOOM_IN_MS;
+				const zoomOutStart = Math.max(zoomInEnd, sub.end - T.ZOOM_OUT_MS);
+				const zoomOutEnd = sub.end;
+
+				// 查找几何上嵌套在此缩放区内的高亮和光标
+				const zx1 = hotspot.x;
+				const zy1 = hotspot.y;
+				const zx2 = hotspot.x + hotspot.width;
+				const zy2 = hotspot.y + hotspot.height;
+
+				const nestedHl: HighlightTimeEntry[] = [];
+				const nestedCs: CursorMarkerTimeEntry[] = [];
+
+				for (const h of step.hotspots) {
+					if (h.id === hotspot.id || subtitleBoundIds.has(h.id)) continue;
+					const cx = h.x + h.width / 2;
+					const cy = h.y + h.height / 2;
+					if (cx < zx1 || cx > zx2 || cy < zy1 || cy > zy2) continue;
+
+					if (isCursorMarker(h)) {
+						const target = h.mouseTarget ?? { x: cx, y: cy };
+						const moveStart = subStart + T.ZOOM_IN_MS + T.CURSOR_SHOW_DELAY_MS;
+						const moveEnd = moveStart + step.cursor.movementDuration;
+						const clickStart = moveEnd;
+						const clickEnd = clickStart + T.CLICK_EFFECT_MS;
+						nestedCs.push({
+							from: lastCursorTo ?? step.cursor.startPosition,
+							to: target,
+							moveStart,
+							moveEnd,
+							clickStart,
+							clickEnd,
+							hotspot: h,
+						});
+						lastCursorTo = target;
+					} else if (!isZoomRegion(h)) {
+						const duration = h.highlightDuration ?? T.DEFAULT_HIGHLIGHT_DURATION_MS;
+						const entry: HighlightTimeEntry = {
+							hotspot: h,
+							fadeInStart: subStart + T.ZOOM_IN_MS,
+							fullAt: subStart + T.ZOOM_IN_MS + T.HIGHLIGHT_FADE_MS,
+							fadeOutStart: subStart + T.ZOOM_IN_MS + T.HIGHLIGHT_FADE_MS + duration,
+							fadeOutEnd:
+								subStart + T.ZOOM_IN_MS + T.HIGHLIGHT_FADE_MS + duration + T.HIGHLIGHT_FADE_MS,
+						};
+						nestedHl.push(entry);
+						highlightTimings.push(entry);
+					}
+				}
+
+				cursorTimings.push(...nestedCs);
+
+				zoomTimings.push({
+					hotspot,
+					zoomInStart,
+					zoomInEnd,
+					zoomOutStart,
+					zoomOutEnd,
+					nestedHighlights: nestedHl,
+					nestedCursors: nestedCs,
+				});
+			}
+
+			// 重新计算 cursorShowTime/cursorHideTime 以包含字幕驱动的光标
+			if (cursorTimings.length > 0) {
+				const sorted = [...cursorTimings].sort((a, b) => a.moveStart - b.moveStart);
+				cursorShowTime = sorted[0].moveStart - T.CURSOR_SHOW_DELAY_MS;
+				const lastMarker = sorted[sorted.length - 1];
+				cursorHideTime = lastMarker.clickEnd + T.HOLD_AFTER_CLICK_MS + T.HOLD_BETWEEN_MS;
+			}
+		}
+
+		// ── 字幕驱动步骤时长 ──
+		// 如果步骤有字幕，确保步骤时长至少覆盖所有字幕的结束时间
+		if (step.subtitles.length > 0) {
+			const lastSubEnd = Math.max(...step.subtitles.map((s) => s.end));
+			if (t < lastSubEnd) t = lastSubEnd;
+		}
 
 		// ── 最终停留 + 转场 ──
 		t += T.FINAL_HOLD_MS;
@@ -416,8 +589,8 @@ function computeStepTimelines(project: DemoProject): StepTimeline[] {
 		const transitionDuration =
 			step.transition.type === "none" ? 50 : (step.transition.duration ?? T.TRANSITION_MS);
 
-		// 无热点的 Step 使用固定展示时长
-		if (step.hotspots.length === 0) {
+		// 无热点且无字幕的 Step 使用固定展示时长
+		if (step.hotspots.length === 0 && step.subtitles.length === 0) {
 			const totalWithoutTransition = T.NO_HOTSPOTS_HOLD_MS;
 			if (transitionStart < totalWithoutTransition) {
 				// 保持 2000ms 的展示时长
@@ -590,6 +763,22 @@ export function computeFrameState(project: DemoProject, timeMs: number): DemoFra
 		(sub) => localTime >= sub.start && localTime <= sub.end,
 	);
 
+	// 6.1 字幕音频：优先检查分组音频，再回退到单条字幕音频
+	let activeSubtitleAudio: string | null = null;
+	for (const sub of visibleSubtitles) {
+		if (sub.groupId) {
+			const group = step.subtitleAudioGroups?.find((g) => g.id === sub.groupId);
+			if (group?.audio.url) {
+				activeSubtitleAudio = group.audio.url;
+				break;
+			}
+		}
+		if (sub.audio?.url) {
+			activeSubtitleAudio = sub.audio.url;
+			break;
+		}
+	}
+
 	// 7. Tooltip
 	let tooltip: DemoFrameState["tooltip"] = null;
 	for (const marker of currentTl.cursorMarkers) {
@@ -620,6 +809,7 @@ export function computeFrameState(project: DemoProject, timeMs: number): DemoFra
 		zoom,
 		transition,
 		visibleSubtitles,
+		activeSubtitleAudio,
 		tooltip,
 	};
 }

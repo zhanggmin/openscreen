@@ -8,6 +8,7 @@ import {
 } from "@/lib/demobuilder/demoPlaybackEngine";
 import type { DemoProject } from "@/lib/demobuilder/types";
 import { DemoFrameView } from "./DemoFrameView";
+import { SubtitleBar } from "./SubtitleBar";
 
 interface DemoPlayerProps {
 	project: DemoProject;
@@ -159,6 +160,41 @@ export function DemoPlayer({ project, onExit, initialStepId }: DemoPlayerProps) 
 		return () => cancelAnimationFrame(rafRef.current);
 	}, [isPlaying, project, totalMs]);
 
+	// ── 字幕音频播放 ──
+	const subtitleAudioRef = useRef<HTMLAudioElement | null>(null);
+	const lastAudioUrlRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const audioUrl = frameState?.activeSubtitleAudio ?? null;
+		if (audioUrl === lastAudioUrlRef.current) return;
+		lastAudioUrlRef.current = audioUrl;
+
+		if (subtitleAudioRef.current) {
+			subtitleAudioRef.current.pause();
+			subtitleAudioRef.current.currentTime = 0;
+			subtitleAudioRef.current = null;
+		}
+
+		if (audioUrl) {
+			const audio = new Audio(audioUrl);
+			audio.volume = 0.8;
+			audio.play().catch(() => {
+				/* 自动播放被阻止，忽略 */
+			});
+			subtitleAudioRef.current = audio;
+		}
+	}, [frameState?.activeSubtitleAudio]);
+
+	// 停止播放时清理音频
+	useEffect(() => {
+		if (!isPlaying && subtitleAudioRef.current) {
+			subtitleAudioRef.current.pause();
+			subtitleAudioRef.current.currentTime = 0;
+			subtitleAudioRef.current = null;
+			lastAudioUrlRef.current = null;
+		}
+	}, [isPlaying]);
+
 	// ── Navigation ──
 	const goToStep = useCallback(
 		(index: number) => {
@@ -299,6 +335,10 @@ export function DemoPlayer({ project, onExit, initialStepId }: DemoPlayerProps) 
 								</p>
 							)}
 						</div>
+						{/* 字幕层 — 固定在播放容器底部 */}
+						{frameState.visibleSubtitles.map((sub) => (
+							<SubtitleBar key={sub.id} subtitle={sub} />
+						))}
 					</div>
 				) : currentScreenshot ? (
 					<div className="relative max-w-full max-h-full">
