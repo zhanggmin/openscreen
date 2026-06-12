@@ -223,6 +223,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	revealInFolder: (filePath: string) => {
 		return ipcRenderer.invoke("reveal-in-folder", filePath);
 	},
+	onDemoExportProgress: (
+		callback: (payload: { progress: number; currentFrame: number; totalFrames: number }) => void,
+	) => {
+		const listener = (
+			_e: unknown,
+			payload: { progress: number; currentFrame: number; totalFrames: number },
+		) => callback(payload);
+		ipcRenderer.on("demo:export-progress", listener);
+		return () => ipcRenderer.removeListener("demo:export-progress", listener);
+	},
 	getShortcuts: () => {
 		return ipcRenderer.invoke("get-shortcuts");
 	},

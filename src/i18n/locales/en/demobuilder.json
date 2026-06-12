@@ -45,6 +45,14 @@
 		"bgMusicOn": "Selected",
 		"bgMusicOff": "None",
 		"bgMusicVolume": "Volume",
+		"musicOption": {
+			"none": "None",
+			"business": "Business",
+			"inspirational": "Inspirational",
+			"upbeat": "Upbeat",
+			"uplifting": "Uplifting",
+			"ambient": "Ambient Tech"
+		},
 		"exportMp4": "Export as MP4",
 		"exportMp4Desc": "Generate MP4 video file",
 		"exportPdf": "Export as PDF",

@@ -264,6 +264,9 @@ interface Window {
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;
+		onDemoExportProgress: (
+			callback: (payload: { progress: number; currentFrame: number; totalFrames: number }) => void,
+		) => () => void;
 		getShortcuts: () => Promise<Record<string, unknown> | null>;
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		updateGlobalShortcut: (binding: {

@@ -486,6 +486,36 @@ function SettingsPanel({
 
 // ─── Sound Panel ──────────────────────────────────────────────────────────────
 
+/** 背景音乐选项列表（"无" + 5 首内置音乐）。 */
+const BACKGROUND_MUSIC_OPTIONS: { id: string; path: string | null; labelKey: string }[] = [
+	{ id: "none", path: null, labelKey: "sidebar.musicOption.none" },
+	{
+		id: "business",
+		path: "/sounds/business-background.mp3",
+		labelKey: "sidebar.musicOption.business",
+	},
+	{
+		id: "inspirational",
+		path: "/sounds/inspirational-background.mp3",
+		labelKey: "sidebar.musicOption.inspirational",
+	},
+	{
+		id: "upbeat",
+		path: "/sounds/upbeat-motivational-background.mp3",
+		labelKey: "sidebar.musicOption.upbeat",
+	},
+	{
+		id: "uplifting",
+		path: "/sounds/uplifting-motivational-background.mp3",
+		labelKey: "sidebar.musicOption.uplifting",
+	},
+	{
+		id: "ambient",
+		path: "/sounds/ambient-technology-corporate--background.mp3",
+		labelKey: "sidebar.musicOption.ambient",
+	},
+];
+
 function SoundPanel({
 	settings,
 	onUpdateSound,
@@ -502,6 +532,8 @@ function SoundPanel({
 		[onUpdateSound],
 	);
 
+	const currentPath = settings.sound.backgroundMusicPath;
+
 	return (
 		<div className="px-1 space-y-2">
 			{/* Click sound toggle */}
@@ -517,10 +549,39 @@ function SoundPanel({
 			<div className="p-2.5 rounded-lg editor-control-surface space-y-2">
 				<div className="flex items-center justify-between">
 					<span className="text-[11px] font-medium text-slate-300">{t("sidebar.bgMusic")}</span>
-					<span className="text-[10px] text-slate-500">
-						{settings.sound.backgroundMusicPath ? t("sidebar.bgMusicOn") : t("sidebar.bgMusicOff")}
-					</span>
 				</div>
+
+				{/* 音乐选择列表 */}
+				<div className="flex flex-col gap-1">
+					{BACKGROUND_MUSIC_OPTIONS.map((option) => {
+						const isSelected = currentPath === option.path;
+						return (
+							<button
+								key={option.id}
+								type="button"
+								onClick={() => onUpdateSound({ backgroundMusicPath: option.path })}
+								className={cn(
+									"flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-left transition-all duration-150",
+									isSelected
+										? "border-[#34B27B]/70 bg-[#34B27B]/15 text-[#34B27B]"
+										: "border-white/[0.06] bg-white/[0.035] text-slate-400 hover:bg-white/[0.075] hover:text-slate-200",
+								)}
+							>
+								<span
+									className={cn(
+										"flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+										isSelected ? "border-[#34B27B] bg-[#34B27B]" : "border-slate-500",
+									)}
+								>
+									{isSelected && <span className="block h-1.5 w-1.5 rounded-full bg-white" />}
+								</span>
+								<span className="text-[11px] font-medium">{t(option.labelKey)}</span>
+							</button>
+						);
+					})}
+				</div>
+
+				{/* 音量控制 */}
 				<div>
 					<div className="flex items-center justify-between mb-1">
 						<span className="text-[10px] text-slate-400">{t("sidebar.bgMusicVolume")}</span>
@@ -535,6 +596,7 @@ function SoundPanel({
 						max={1}
 						step={0.01}
 						className="w-full"
+						disabled={!settings.sound.backgroundMusicPath}
 					/>
 				</div>
 			</div>

@@ -33,12 +33,10 @@ import { formatShortcut } from "@/utils/platformUtils";
 import { BLUR_REGIONS_ENABLED } from "../featureFlags";
 import type {
 	AnnotationRegion,
-	CursorTelemetryPoint,
 	SpeedRegion,
 	TrimRegion,
 	TTSRegion,
 	ZoomDepth,
-	ZoomFocus,
 	ZoomRegion,
 } from "../types";
 import BackgroundWaveform from "./BackgroundWaveform";

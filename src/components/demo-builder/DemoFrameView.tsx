@@ -71,6 +71,12 @@ export interface DemoFrameViewProps {
 	 * 用于编辑器预览 (CanvasArea)，父级已渲染截图，叠加层直接覆盖其上。
 	 */
 	skipChrome?: boolean;
+	/**
+	 * 光标主题资源 URL 覆盖（assetPath → dataUrl）。
+	 * 用于 Remotion 导出场景：headless Chrome 无法访问 publicDir，
+	 * 主进程预先把光标 PNG 转为 data URL 注入。
+	 */
+	cursorAssetUrls?: Record<string, string>;
 }
 
 // ─── 辅助函数 ────────────────────────────────────────────────────────────────
@@ -421,12 +427,14 @@ function CursorOverlay({
 	cursorType,
 	cursorTheme,
 	isClicking,
+	cursorAssetUrls,
 }: {
 	x: number;
 	y: number;
 	cursorType?: CursorStyle;
 	cursorTheme?: string;
 	isClicking: boolean;
+	cursorAssetUrls?: Record<string, string>;
 }) {
 	// 解析光标主题：如果设置了非默认主题，使用主题的 arrow/pointer 图片
 	const theme = getCursorTheme(cursorTheme);
@@ -436,7 +444,12 @@ function CursorOverlay({
 		const asset = isClicking
 			? (theme.assets.pointer ?? theme.assets.arrow)
 			: (theme.assets.arrow ?? theme.assets.pointer);
-		cursorSrc = asset ? getAssetPath(asset.assetPath) : cursorDefaultUrl;
+		if (asset) {
+			// 优先使用注入的 dataUrl 映射（Remotion 导出场景），否则走 publicDir
+			cursorSrc = cursorAssetUrls?.[asset.assetPath] ?? getAssetPath(asset.assetPath);
+		} else {
+			cursorSrc = cursorDefaultUrl;
+		}
 	} else {
 		// 回退到旧版 CursorStyle 映射
 		cursorSrc = CURSOR_IMAGE_MAP[cursorType ?? "default"] ?? cursorDefaultUrl;
@@ -600,6 +613,7 @@ export function DemoFrameView({
 	cursorType,
 	cursorTheme,
 	skipChrome,
+	cursorAssetUrls,
 }: DemoFrameViewProps) {
 	const bgStyle = useMemo(() => getBackgroundStyle(background), [background]);
 
@@ -694,6 +708,7 @@ export function DemoFrameView({
 					cursorType={cursorType}
 					cursorTheme={cursorTheme}
 					isClicking={state.clickEffect !== null}
+					cursorAssetUrls={cursorAssetUrls}
 				/>
 			)}
 

@@ -69,14 +69,17 @@ function migrateProject(project: DemoProject): DemoProject {
 
 function demoReducer(state: DemoState, action: DemoAction): DemoState {
 	switch (action.type) {
-		case "SET_PROJECT":
+		case "SET_PROJECT": {
+			const migratedProject = migrateProject(action.project);
+			const sortedSteps = [...migratedProject.steps].sort((a, b) => a.order - b.order);
 			return {
 				...state,
-				project: migrateProject(action.project),
+				project: migratedProject,
 				isDirty: false,
-				selectedStepId: null,
+				selectedStepId: sortedSteps.length > 0 ? sortedSteps[0].id : null,
 				selectedHotspotId: null,
 			};
+		}
 		case "UPDATE_PROJECT":
 			if (!state.project) return state;
 			return {
@@ -441,8 +444,13 @@ export function DemoEditor() {
 
 	// Stable callbacks for TimelineStrip
 	const handleSelectStep = useCallback(
-		(stepId: string | null) => dispatch({ type: "SELECT_STEP", stepId }),
-		[],
+		(stepId: string | null) => {
+			if (isPlaying) {
+				setIsPlaying(false);
+			}
+			dispatch({ type: "SELECT_STEP", stepId });
+		},
+		[isPlaying],
 	);
 
 	const handleReorderSteps = useCallback(

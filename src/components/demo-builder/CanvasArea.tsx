@@ -371,6 +371,7 @@ function CanvasAreaInner({
 	// ── 字幕音频播放 ──
 	const subtitleAudioRef = useRef<HTMLAudioElement | null>(null);
 	const lastAudioUrlRef = useRef<string | null>(null);
+	const [isSubtitleAudioPlaying, setIsSubtitleAudioPlaying] = useState(false);
 
 	useEffect(() => {
 		const audioUrl = frameState?.activeSubtitleAudio ?? null;
@@ -392,6 +393,15 @@ function CanvasAreaInner({
 				// 自动播放被浏览器阻止，忽略错误
 			});
 			subtitleAudioRef.current = audio;
+			setIsSubtitleAudioPlaying(true);
+
+			// 音频结束时自动恢复背景音乐音量
+			audio.addEventListener("ended", () => {
+				setIsSubtitleAudioPlaying(false);
+				subtitleAudioRef.current = null;
+			});
+		} else {
+			setIsSubtitleAudioPlaying(false);
 		}
 	}, [frameState?.activeSubtitleAudio]);
 
@@ -402,8 +412,64 @@ function CanvasAreaInner({
 			subtitleAudioRef.current.currentTime = 0;
 			subtitleAudioRef.current = null;
 			lastAudioUrlRef.current = null;
+			setIsSubtitleAudioPlaying(false);
 		}
 	}, [isPlaying]);
+
+	// ── 背景音乐播放（支持字幕语音 ducking）──
+	const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+	const bgMusicPath = project.settings.sound.backgroundMusicPath;
+	const bgMusicVolume = project.settings.sound.backgroundMusicVolume;
+	// 字幕语音播放时，背景音乐降低到此比例（原音量的 20%）
+	const duckedVolume = bgMusicVolume * 0.2;
+	const effectiveBgVolume = isSubtitleAudioPlaying ? duckedVolume : bgMusicVolume;
+
+	useEffect(() => {
+		// 停止或未选择音乐时清理
+		if (!isPlaying || !bgMusicPath) {
+			if (bgMusicRef.current) {
+				bgMusicRef.current.pause();
+				bgMusicRef.current.currentTime = 0;
+				bgMusicRef.current = null;
+			}
+			return;
+		}
+
+		// 已在播放同一首音乐，更新音量（含 ducking）
+		if (bgMusicRef.current && bgMusicRef.current.src.endsWith(bgMusicPath)) {
+			bgMusicRef.current.volume = effectiveBgVolume;
+			return;
+		}
+
+		// 切换音乐：停止旧的
+		if (bgMusicRef.current) {
+			bgMusicRef.current.pause();
+			bgMusicRef.current = null;
+		}
+
+		// 开始播放新音乐
+		try {
+			const audio = new Audio(bgMusicPath);
+			audio.loop = true;
+			audio.volume = effectiveBgVolume;
+			audio.play().catch(() => {
+				// 自动播放被浏览器阻止，忽略错误
+			});
+			bgMusicRef.current = audio;
+		} catch {
+			// Audio 不支持
+		}
+	}, [isPlaying, bgMusicPath, effectiveBgVolume]);
+
+	// 组件卸载时清理背景音乐
+	useEffect(() => {
+		return () => {
+			if (bgMusicRef.current) {
+				bgMusicRef.current.pause();
+				bgMusicRef.current = null;
+			}
+		};
+	}, []);
 
 	// Escape key to stop playback
 	useEffect(() => {

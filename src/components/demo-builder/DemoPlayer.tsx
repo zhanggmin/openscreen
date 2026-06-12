@@ -163,6 +163,7 @@ export function DemoPlayer({ project, onExit, initialStepId }: DemoPlayerProps) 
 	// ── 字幕音频播放 ──
 	const subtitleAudioRef = useRef<HTMLAudioElement | null>(null);
 	const lastAudioUrlRef = useRef<string | null>(null);
+	const [isSubtitleAudioPlaying, setIsSubtitleAudioPlaying] = useState(false);
 
 	useEffect(() => {
 		const audioUrl = frameState?.activeSubtitleAudio ?? null;
@@ -182,6 +183,14 @@ export function DemoPlayer({ project, onExit, initialStepId }: DemoPlayerProps) 
 				/* 自动播放被阻止，忽略 */
 			});
 			subtitleAudioRef.current = audio;
+			setIsSubtitleAudioPlaying(true);
+
+			audio.addEventListener("ended", () => {
+				setIsSubtitleAudioPlaying(false);
+				subtitleAudioRef.current = null;
+			});
+		} else {
+			setIsSubtitleAudioPlaying(false);
 		}
 	}, [frameState?.activeSubtitleAudio]);
 
@@ -192,8 +201,58 @@ export function DemoPlayer({ project, onExit, initialStepId }: DemoPlayerProps) 
 			subtitleAudioRef.current.currentTime = 0;
 			subtitleAudioRef.current = null;
 			lastAudioUrlRef.current = null;
+			setIsSubtitleAudioPlaying(false);
 		}
 	}, [isPlaying]);
+
+	// ── 背景音乐播放（支持字幕语音 ducking）──
+	const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+	const bgMusicPath = project.settings.sound.backgroundMusicPath;
+	const bgMusicVolume = project.settings.sound.backgroundMusicVolume;
+	const duckedVolume = bgMusicVolume * 0.2;
+	const effectiveBgVolume = isSubtitleAudioPlaying ? duckedVolume : bgMusicVolume;
+
+	useEffect(() => {
+		if (!isPlaying || !bgMusicPath) {
+			if (bgMusicRef.current) {
+				bgMusicRef.current.pause();
+				bgMusicRef.current.currentTime = 0;
+				bgMusicRef.current = null;
+			}
+			return;
+		}
+
+		if (bgMusicRef.current && bgMusicRef.current.src.endsWith(bgMusicPath)) {
+			bgMusicRef.current.volume = effectiveBgVolume;
+			return;
+		}
+
+		if (bgMusicRef.current) {
+			bgMusicRef.current.pause();
+			bgMusicRef.current = null;
+		}
+
+		try {
+			const audio = new Audio(bgMusicPath);
+			audio.loop = true;
+			audio.volume = effectiveBgVolume;
+			audio.play().catch(() => {
+				/* 自动播放被阻止，忽略 */
+			});
+			bgMusicRef.current = audio;
+		} catch {
+			/* Audio 不支持 */
+		}
+	}, [isPlaying, bgMusicPath, effectiveBgVolume]);
+
+	useEffect(() => {
+		return () => {
+			if (bgMusicRef.current) {
+				bgMusicRef.current.pause();
+				bgMusicRef.current = null;
+			}
+		};
+	}, []);
 
 	// ── Navigation ──
 	const goToStep = useCallback(

@@ -30,6 +30,16 @@ function getDefaultTTSSettings(): TTSSettings {
 	return { voice: "", rate: 1.0, pitch: 1.0, volume: 1.0, lang: "zh-CN" };
 }
 
+/** 将 Blob 转换为 base64 data URL（可持久化到项目 JSON） */
+function blobToDataUrl(blob: Blob): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onloadend = () => resolve(reader.result as string);
+		reader.onerror = () => reject(new Error("Failed to convert blob to data URL"));
+		reader.readAsDataURL(blob);
+	});
+}
+
 /** 将 AudioBuffer 转换为 WAV Blob */
 function audioBufferToWav(buffer: AudioBuffer): Blob {
 	const numChannels = buffer.numberOfChannels;
@@ -142,7 +152,7 @@ export function useSubtitleTTS(): UseSubtitleTTSReturn {
 		[selectedVoice],
 	);
 
-	/** 合成文本并返回 blobUrl + duration */
+	/** 合成文本并返回 data URL（base64，可持久化）+ duration */
 	const synthesizeToUrl = useCallback(
 		async (text: string, voiceId?: string): Promise<{ url: string; duration: number }> => {
 			const engine = engineRef.current;
@@ -154,7 +164,8 @@ export function useSubtitleTTS(): UseSubtitleTTSReturn {
 			const audioBuffer = await engine.synthesize(text, settings);
 			const duration = Math.round(audioBuffer.duration * 1000);
 			const blob = audioBufferToWav(audioBuffer);
-			const url = URL.createObjectURL(blob);
+			// 转为 base64 data URL 以便持久化到项目 JSON
+			const url = await blobToDataUrl(blob);
 
 			return { url, duration };
 		},

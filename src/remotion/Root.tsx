@@ -27,12 +27,20 @@ function resolutionToDimensions(resolution: VideoResolution): { width: number; h
 export interface RemotionRootProps {
 	project?: DemoProject | null;
 	screenshotUrls?: Record<string, string>;
+	cursorAssetUrls?: Record<string, string>;
+	/** 点击音效 data URL（主进程注入） */
+	clickSoundUrl?: string | null;
+	/** 背景音乐 data URL（主进程注入） */
+	bgmUrl?: string | null;
 }
 
 /** 占位默认 props，确保 bundle 阶段 Composition 能注册成功 */
 const DEFAULT_PROPS: RemotionRootProps = {
 	project: null,
 	screenshotUrls: {},
+	cursorAssetUrls: {},
+	clickSoundUrl: null,
+	bgmUrl: null,
 };
 
 export function RemotionRoot() {

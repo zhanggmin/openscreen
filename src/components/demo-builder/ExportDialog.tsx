@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { DemoProject } from "@/lib/demobuilder/types";
 import { nativeBridgeClient } from "@/native/client";
@@ -21,6 +21,36 @@ export function ExportDialog({ project, onClose }: ExportDialogProps) {
 	const [status, setStatus] = useState<ExportStatus>({ type: "idle" });
 
 	const isExporting = status.type === "exporting";
+
+	// Subscribe to export progress events from main process
+	useEffect(() => {
+		if (!isExporting) return;
+		const api = window.electronAPI;
+		if (!api?.onDemoExportProgress) {
+			console.warn("[ExportDialog] electronAPI.onDemoExportProgress not available");
+			return;
+		}
+		console.log("[ExportDialog] Subscribed to demo:export-progress");
+		const unsubscribe = api.onDemoExportProgress((payload) => {
+			console.log(
+				`[ExportDialog] progress=${(payload.progress * 100).toFixed(1)}% (${payload.currentFrame}/${payload.totalFrames})`,
+			);
+			setStatus((prev) =>
+				prev.type === "exporting"
+					? {
+							type: "exporting",
+							progress: payload.progress,
+							currentFrame: payload.currentFrame,
+							totalFrames: payload.totalFrames,
+						}
+					: prev,
+			);
+		});
+		return () => {
+			console.log("[ExportDialog] Unsubscribed from demo:export-progress");
+			unsubscribe?.();
+		};
+	}, [isExporting]);
 
 	async function handleExport() {
 		if (format === "pdf" || format === "gif") {

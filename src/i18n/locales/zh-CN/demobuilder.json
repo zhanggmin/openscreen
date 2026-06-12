@@ -45,6 +45,14 @@
 		"bgMusicOn": "已选择",
 		"bgMusicOff": "未选择",
 		"bgMusicVolume": "音量",
+		"musicOption": {
+			"none": "无",
+			"business": "商业",
+			"inspirational": "励志",
+			"upbeat": "振奋",
+			"uplifting": "乐观",
+			"ambient": "环境科技"
+		},
 		"exportMp4": "导出为 MP4",
 		"exportMp4Desc": "生成 MP4 视频文件",
 		"exportPdf": "导出为 PDF",

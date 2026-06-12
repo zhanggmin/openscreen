@@ -350,6 +350,54 @@ export class DemoService {
 					}
 				}
 
+				// Convert cursor theme PNGs to data URLs (publicDir served as /public/* by Remotion,
+				// but getAssetPath returns /cursors/* — so inline them to avoid 404).
+				const cursorAssetUrls: Record<string, string> = {};
+				const themeId = project.settings.cursorTheme;
+				if (themeId && themeId !== "default") {
+					// Theme assets live at public/cursors/<themeId>/{arrow,pointer}.png
+					const themeDir = path.join(app.getAppPath(), "public", "cursors", themeId);
+					for (const variant of ["arrow", "pointer"]) {
+						const filePath = path.join(themeDir, `${variant}.png`);
+						try {
+							const buffer = await fs.readFile(filePath);
+							const assetPath = `cursors/${themeId}/${variant}.png`;
+							cursorAssetUrls[assetPath] = `data:image/png;base64,${buffer.toString("base64")}`;
+						} catch {
+							// asset missing, fall through to default cursor
+						}
+					}
+				}
+
+				// 读取点击音效 → data URL
+				let clickSoundUrl: string | null = null;
+				if (project.settings.sound?.clickSoundEnabled !== false) {
+					try {
+						const clickPath = path.join(app.getAppPath(), "public", "sounds", "click.mp3");
+						const buffer = await fs.readFile(clickPath);
+						clickSoundUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+					} catch {
+						// click sound missing, skip
+					}
+				}
+
+				// 读取背景音乐 → data URL（如果配置了）
+				let bgmUrl: string | null = null;
+				const bgmPath = project.settings.sound?.backgroundMusicPath;
+				if (bgmPath) {
+					try {
+						const resolved = bgmPath.startsWith("/")
+							? path.join(app.getAppPath(), "public", bgmPath.replace(/^\//, ""))
+							: bgmPath;
+						const buffer = await fs.readFile(resolved);
+						const ext = path.extname(resolved).slice(1).toLowerCase();
+						const mime = ext === "mp3" ? "mpeg" : ext || "mpeg";
+						bgmUrl = `data:audio/${mime};base64,${buffer.toString("base64")}`;
+					} catch {
+						// BGM file not found, skip
+					}
+				}
+
 				// Ask user for save path
 				const win = this.context.getDemoEditorWindow() ?? BrowserWindow.getFocusedWindow();
 				const defaultName = `${project.name || "demo"}.mp4`;
@@ -365,7 +413,17 @@ export class DemoService {
 				await exportDemoVideo({
 					project,
 					screenshotUrls,
+					cursorAssetUrls,
+					clickSoundUrl,
+					bgmUrl,
 					outputPath: saveResult.filePath,
+					onProgress: (p) => {
+						// Forward progress to renderer for UI update
+						const editor = this.context.getDemoEditorWindow();
+						if (editor && !editor.isDestroyed()) {
+							editor.webContents.send("demo:export-progress", p);
+						}
+					},
 				});
 
 				return { success: true, filePath: saveResult.filePath };

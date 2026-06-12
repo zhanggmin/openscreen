@@ -166,6 +166,8 @@ interface StepTimeline {
 	transitionDuration: number;
 }
 
+export type { CursorMarkerTimeEntry, StepTimeline };
+
 // ─── 光标插值 ────────────────────────────────────────────────────────────────
 
 function easeInOut(t: number): number {
@@ -215,7 +217,7 @@ function interpolateCursorPosition(
 
 // ─── Step 时间线计算 ─────────────────────────────────────────────────────────
 
-function computeStepTimelines(project: DemoProject): StepTimeline[] {
+export function computeStepTimelines(project: DemoProject): StepTimeline[] {
 	const sortedSteps = [...project.steps].sort((a, b) => a.order - b.order);
 	const timelines: StepTimeline[] = [];
 	let globalStart = 0;
@@ -629,7 +631,17 @@ function computeStepTimelines(project: DemoProject): StepTimeline[] {
  */
 export function computeFrameState(project: DemoProject, timeMs: number): DemoFrameState {
 	const timelines = computeStepTimelines(project);
+	return computeFrameStateFromTimelines(timelines, timeMs);
+}
 
+/**
+ * 与 computeFrameState 等价，但接受预计算好的 timelines。
+ * 用于高频调用场景（如 Remotion 每帧渲染），避免重复计算 timelines。
+ */
+export function computeFrameStateFromTimelines(
+	timelines: StepTimeline[],
+	timeMs: number,
+): DemoFrameState {
 	if (timelines.length === 0) {
 		throw new Error("computeFrameState: project has no steps");
 	}
@@ -821,4 +833,91 @@ export function computeTotalDurationMs(project: DemoProject): number {
 	const timelines = computeStepTimelines(project);
 	if (timelines.length === 0) return 0;
 	return timelines[timelines.length - 1].globalEnd;
+}
+
+// ─── 音频提示（用于 Remotion 导出） ─────────────────────────────────────────
+
+/** 单条音频提示，全局时间轴对齐。 */
+export interface AudioCue {
+	/** 音频源（data URL 或 静态路径） */
+	src: string;
+	/** 全局开始时间（毫秒） */
+	startMs: number;
+	/** 持续时长（毫秒） */
+	durationMs: number;
+	/** 音量 0~1 */
+	volume: number;
+}
+
+/**
+ * 计算项目所有音频提示（TTS / 点击音效），全部以全局时间戳对齐。
+ * 不包含 BGM（BGM 简单 loop 即可）。
+ */
+export function computeAudioCues(
+	project: DemoProject,
+	options: { clickSoundDurationMs?: number; defaultClickSoundSrc?: string | null } = {},
+): { ttsAudios: AudioCue[]; clickEvents: AudioCue[] } {
+	return computeAudioCuesFromTimelines(computeStepTimelines(project), project, options);
+}
+
+/**
+ * 与 computeAudioCues 等价，但接受预计算好的 timelines，避免重复计算。
+ */
+export function computeAudioCuesFromTimelines(
+	timelines: StepTimeline[],
+	project: DemoProject,
+	options: { clickSoundDurationMs?: number; defaultClickSoundSrc?: string | null } = {},
+): { ttsAudios: AudioCue[]; clickEvents: AudioCue[] } {
+	const ttsAudios: AudioCue[] = [];
+	const clickEvents: AudioCue[] = [];
+
+	const clickDur = options.clickSoundDurationMs ?? 200;
+	const clickSrc = options.defaultClickSoundSrc ?? null;
+
+	for (const tl of timelines) {
+		const { step, globalStart, cursorMarkers } = tl;
+
+		// ── TTS 音频：分组优先，避免对同一组重复播放 ──
+		const playedGroups = new Set<string>();
+		// 先扫描分组
+		const sortedSubs = [...step.subtitles].sort((a, b) => a.start - b.start);
+		for (const sub of sortedSubs) {
+			if (sub.groupId) {
+				if (playedGroups.has(sub.groupId)) continue;
+				const group = step.subtitleAudioGroups?.find((g) => g.id === sub.groupId);
+				if (group?.audio.url) {
+					ttsAudios.push({
+						src: group.audio.url,
+						startMs: globalStart + sub.start,
+						durationMs: group.audio.duration,
+						volume: 1,
+					});
+					playedGroups.add(sub.groupId);
+				}
+				continue;
+			}
+			if (sub.audio?.url) {
+				ttsAudios.push({
+					src: sub.audio.url,
+					startMs: globalStart + sub.start,
+					durationMs: sub.audio.duration,
+					volume: 1,
+				});
+			}
+		}
+
+		// ── 点击音效：在每个光标 marker 的 clickStart 时刻 ──
+		if (clickSrc && project.settings.sound?.clickSoundEnabled !== false) {
+			for (const marker of cursorMarkers) {
+				clickEvents.push({
+					src: clickSrc,
+					startMs: globalStart + marker.clickStart,
+					durationMs: clickDur,
+					volume: 0.6,
+				});
+			}
+		}
+	}
+
+	return { ttsAudios, clickEvents };
 }
